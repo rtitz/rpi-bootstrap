@@ -1,0 +1,11 @@
+---
+# This file is intentionally present so the playbook can load cleanly.
+# It should be created or updated with Ansible Vault, for example:
+#   ansible-vault create group_vars/vault.yml
+#   ansible-vault edit group_vars/vault.yml
+#
+# Use it to store encrypted values such as secrets or credentials that must
+# not be committed in plain text.
+#
+# Example structure:
+# my_secret: "example-value"

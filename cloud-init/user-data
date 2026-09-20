@@ -1,0 +1,60 @@
+#cloud-config
+timezone: Europe/Berlin
+
+# System Language (Locale) set to US English, and explicitly forcing first-boot generation
+locale: en_US.UTF-8
+package_update: true
+package_upgrade: false
+
+keyboard:
+  layout: de
+  variant: nodeadkeys
+
+# Protect your custom programmatic hostname overrides cleanly
+preserve_hostname: false
+manage_etc_hosts: true
+
+# Run runtime hooks synchronously to ensure host-resolution is accurate
+runcmd:
+  # 1. Extract raw serial, then format via Bash explicitly for Pi 4 (shortened) vs Pi 5 (full length)
+  - |
+    RAW_SERIAL=$(awk "/Serial/ {print \$3}" /proc/cpuinfo)
+    if [[ $RAW_SERIAL == 10000000* ]]; then
+      BOARD_SERIAL=${RAW_SERIAL:8}
+    else
+      BOARD_SERIAL=$RAW_SERIAL
+    fi
+
+    HOSTNAME="pi-${BOARD_SERIAL}"
+    hostnamectl set-hostname "$HOSTNAME"
+
+    # Keep /etc/hosts stable across repeated boots without duplicating entries.
+    sed -i '/^127\.0\.1\.1 /d' /etc/hosts
+    echo "127.0.1.1 ${HOSTNAME}" >> /etc/hosts
+
+  # 2. UNIVERSAL HARDWARE BYPASS OVERRIDE: Cleaned multiline block format (Perfect for Ubuntu & Pi OS)
+  - |
+    echo "Writing native hardware bypass flags directly to the boot partition..."
+    touch /boot/firmware/ssh || touch /boot/ssh
+
+    # Force generate missing system host keys if they are uninitialized
+    ssh-keygen -A
+
+    # Reload and aggressively kick the native systemd SSH services
+    systemctl daemon-reload
+    systemctl enable ssh
+    systemctl restart ssh || systemctl start ssh || systemctl restart openssh-server
+
+# Create the dedicated system administrator profile (Universally safe across all Linux flavors)
+users:
+  - name: automation
+    gecos: Automation Administrator
+    sudo: "ALL=(ALL) NOPASSWD:ALL"  # Allow passwordless sudo access
+    shell: /bin/bash
+    lock_passwd: true               # Disable raw password login vectors entirely
+    passwd: "!"
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIF976V9tbvLrZGU03BHC6JoeKK4DQDYS/d+DJGLL7WlC
+
+packages:
+  - vim

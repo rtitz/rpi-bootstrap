@@ -1,0 +1,64 @@
+#cloud-config
+timezone: Europe/Berlin
+
+# System Language (Locale) set to US English
+locale: en_US.UTF-8
+package_update: true
+package_upgrade: false
+
+keyboard:
+  layout: de
+  variant: nodeadkeys
+
+# Forces cloud-init to respect our calculated hostname on the loopback mappings
+preserve_hostname: false
+manage_etc_hosts: true
+
+# Step 1: Safely write the script to the disk partition
+write_files:
+  - path: /usr/local/bin/generate-hostname.sh
+    owner: root:root
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      if [ -f /sys/firmware/devicetree/base/serial-number ]; then
+        RAW_SERIAL=$(tr -d '\0' < /sys/firmware/devicetree/base/serial-number)
+      else
+        RAW_SERIAL="unknown"
+      fi
+
+      if [[ $RAW_SERIAL == 10000000* ]]; then
+        BOARD_SERIAL=${RAW_SERIAL:8}
+      else
+        BOARD_SERIAL=$RAW_SERIAL
+      fi
+
+      if [ -z "$BOARD_SERIAL" ] || [ "$BOARD_SERIAL" = "unknown" ]; then
+        BOARD_SERIAL=$(head /dev/urandom | tr -dc 'a-f0-9' | head -c 8)
+      fi
+
+      HOSTNAME="pi-${BOARD_SERIAL}"
+      echo "$HOSTNAME" > /etc/hostname
+      hostnamectl set-hostname "$HOSTNAME"
+
+      # Update loopback mapping without duplicating entries on repeated boots.
+      sed -i '/^127\.0\.1\.1 /d' /etc/hosts
+      echo "127.0.1.1 ${HOSTNAME}" >> /etc/hosts
+
+# Step 2: Trigger the script AFTER write_files has dropped it onto disk
+runcmd:
+  - /usr/local/bin/generate-hostname.sh
+
+# Create the dedicated system administrator profile (Universally safe across all Linux flavors)
+users:
+  - name: automation
+    gecos: Automation Administrator
+    sudo: "ALL=(ALL) NOPASSWD:ALL"  # Allow passwordless sudo access
+    shell: /bin/bash
+    lock_passwd: true               # Disable raw password logins completely
+    passwd: "!"
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIF976V9tbvLrZGU03BHC6JoeKK4DQDYS/d+DJGLL7WlC
+
+packages:
+  - vim

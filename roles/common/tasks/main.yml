@@ -1,0 +1,180 @@
+---
+- name: Create a persistent first-setup marker file using the current date and time
+  ansible.builtin.copy:
+    dest: "/root/initial_setup_completed"
+    content: |
+      ======================================================================
+      RASPBERRY PI INITIAL PROVISIONING INITIALIZATION RECORD
+      ======================================================================
+      Target Host Name  : {{ ansible_facts['nodename'] }}
+      Provisioning Date : {{ ansible_facts['date_time']['date'] }}
+      Provisioning Time : {{ ansible_facts['date_time']['time'] }} ({{ ansible_facts['date_time']['tz'] }})
+      Orchestrator Tool : Ansible (v{{ ansible_version.string }})
+      ======================================================================
+    owner: root
+    group: root
+    mode: '0644'
+    force: no # CRITICAL: Ensures the file is written ONCE on first run and NEVER overwritten or duplicated later
+
+# ==============================================================================
+# HARDWARE TUNING & FIRMWARE LOCKDOWN
+# ==============================================================================
+- name: Securely configure universal firmware overlays in config.txt
+  ansible.builtin.blockinfile:
+    path: /boot/firmware/config.txt
+    marker: "# {mark} ANSIBLE INFRASTRUCTURE HARDWARE ISOLATION BLOCK"
+    insertafter: EOF
+    block: |
+      dtoverlay=disable-wifi
+      dtoverlay=disable-bt
+      dtparam=spi=off
+      dtparam=i2c_arm=off
+      
+      [pi5]
+      PSU_MAX_CURRENT=5000
+      dtparam=pciex1_gen=2
+      
+      [all]
+  notify: Reboot
+
+- name: Check if UART serial console needs to be forced active
+  ansible.builtin.lineinfile:
+    path: /boot/firmware/config.txt
+    regexp: '^enable_uart='
+    line: 'enable_uart=1'
+    state: present
+  notify: Reboot
+
+# ==============================================================================
+# KERNEL LINE INJECTIONS
+# ==============================================================================
+- name: Force predictable interface naming models inside cmdline.txt
+  ansible.builtin.replace:
+    path: /boot/firmware/cmdline.txt
+    regexp: '^(?!.*net\.ifnames=0)(.*)$'
+    replace: '\1 net.ifnames=0'
+  when: ansible_facts['distribution'] != 'Ubuntu'
+  notify: Reboot
+
+- name: Inject container memory cgroups inside cmdline.txt
+  ansible.builtin.replace:
+    path: /boot/firmware/cmdline.txt
+    regexp: '^(?!.*cgroup_enable=memory)(.*)$'
+    replace: '\1 cgroup_enable=cpuset cgroup_enable=memory cgroup_memory=1'
+  when: ansible_facts['distribution'] != 'Ubuntu'
+  notify: Reboot
+
+- name: Inject performance NVMe freeze guards inside cmdline.txt
+  ansible.builtin.replace:
+    path: /boot/firmware/cmdline.txt
+    regexp: '^(?!.*nvme_core\.default_ps_max_latency_us=0)(.*)$'
+    replace: '\1 nvme_core.default_ps_max_latency_us=0 pcie_aspm=off'
+  when: ansible_facts['distribution'] != 'Ubuntu'
+  notify: Reboot
+
+# ==============================================================================
+# BOOT PARTITION SAFETY HACKS (PREVENTS UBUNTU NO-SPACE EXTRACTION CRASHES)
+# ==============================================================================
+
+- name: Create custom dracut optimization directory template
+  ansible.builtin.file:
+    path: /etc/dracut.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  when: ansible_facts['distribution'] == 'Ubuntu'
+
+- name: Deploy hostonly and high-efficiency XZ compression profiles for Dracut
+  ansible.builtin.copy:
+    dest: /etc/dracut.conf.d/pi-optimization.conf
+    content: |
+      # Build an image tailored ONLY to this Pi hardware, skipping massive generic drivers
+      hostonly="yes"
+      # Force high-efficiency compression algorithm
+      compress="xz"
+      # Drop unnecessary rescue kernel components to save massive space
+      dracut_rescue="no"
+    owner: root
+    group: root
+    mode: '0644'
+  when: ansible_facts['distribution'] == 'Ubuntu'
+
+# ==============================================================================
+# FLASH ENDURANCE & FILESYSTEM OPTIMIZATION
+# ==============================================================================
+- name: Deploy optimized unified filesystem matrix template
+  ansible.builtin.template:
+    src: fstab.j2
+    dest: /etc/fstab
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Reboot
+
+- name: Restrict systemd-journald memory allocation size
+  ansible.builtin.lineinfile:
+    path: /etc/systemd/journald.conf
+    regexp: '^#?SystemMaxUse='
+    line: 'SystemMaxUse=150M' # Leaves a safe 106MB buffer on your 256MB tmpfs
+  notify: Restart Journald
+
+
+# ==============================================================================
+# SECURITY & OPENSSH HARDENING
+# ==============================================================================
+- name: Ensure SSH configuration drop-in directory is present
+  ansible.builtin.file:
+    path: /etc/ssh/sshd_config.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+# NATIVE PATCH: Ensures Raspberry Pi OS actively reads files out of sshd_config.d
+- name: Ensure master sshd_config explicitly includes the drop-in directory
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '(?i)^#?\s*Include\s+/etc/ssh/sshd_config\.d/\*\.conf'
+    line: 'Include /etc/ssh/sshd_config.d/*.conf'
+    insertbefore: BOF
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart SSH
+
+- name: Harden OpenSSH configuration via drop-in file
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/hardening.conf
+    owner: root
+    group: root
+    mode: '0600'
+    content: |
+      PermitRootLogin no
+      PasswordAuthentication no
+  notify: Restart SSH
+
+- name: Update apt database cache and run a safe system package upgrade
+  ansible.builtin.apt:
+    update_cache: yes
+    upgrade: safe
+    cache_valid_time: 3600
+
+- name: Install general administrative utility packages
+  ansible.builtin.apt:
+    name:
+      - vim
+      - htop
+      - btop
+      - curl
+      - git
+      - rsync
+    state: present
+
+- name: Deploy global shell aliases profile script
+  ansible.builtin.template:
+    src: custom_aliases.sh.j2
+    dest: /etc/profile.d/custom_aliases.sh
+    owner: root
+    group: root
+    mode: '0644'

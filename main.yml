@@ -1,0 +1,34 @@
+---
+- name: Provision Raspberry Pi bootstrap and hardening
+  hosts: rpi_nodes
+  become: yes
+  gather_facts: yes
+
+  vars_files:
+    - group_vars/all.yml
+    - group_vars/vault.yml
+
+  handlers:
+    - name: Load centralized service handlers
+      ansible.builtin.import_tasks: handlers.yml
+
+  tasks:
+    - name: Run bootstrap and hardening roles
+      ansible.builtin.include_role:
+        name: "{{ role_item }}"
+      loop:
+        - common
+        - firewall
+      loop_control:
+        loop_var: role_item
+
+    - name: Check if OS upgrades require a reboot
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: reboot_required_file
+
+    - name: Force immediate reboot after upgrades
+      ansible.builtin.reboot:
+        msg: "Ansible forcing reboot to apply kernel and OS updates."
+        reboot_timeout: 120
+      when: reboot_required_file.stat.exists

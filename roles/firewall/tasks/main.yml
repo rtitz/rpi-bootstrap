@@ -1,0 +1,23 @@
+---
+- name: Ensure UFW is installed
+  ansible.builtin.apt:
+    name: ufw
+    state: present
+    update_cache: yes
+
+- name: Allow SSH traffic
+  community.general.ufw:
+    rule: allow
+    name: OpenSSH
+
+- name: Set default firewall policies
+  community.general.ufw:
+    direction: "{{ item.direction }}"
+    policy: "{{ item.policy }}"
+  loop:
+    - { direction: 'incoming', policy: 'deny' }
+    - { direction: 'outgoing', policy: 'allow' }
+
+- name: Enable UFW and reload
+  community.general.ufw:
+    state: enabled

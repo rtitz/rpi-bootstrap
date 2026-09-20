@@ -1,0 +1,19 @@
+---
+# Example defaults for a local Raspberry Pi lab.
+# These values are intentionally sample data only.
+# They are not actively consumed by the repo and should be adjusted for your
+# specific SSH key, network, and host configuration before use.
+#
+# Example values:
+# pi_ssh_user: automation
+# pi_ssh_key_path: ~/.ssh/id_ed25519
+# pi_gateway: 192.168.1.1
+# pi_dns_servers:
+#   - 1.1.1.1
+#   - 8.8.8.8
+#
+# Example interface naming:
+# - Raspberry Pi OS: eth0
+# - Ubuntu: end0
+# pi_network_interface: eth0
+# pi_network_interface_ubuntu: end0
