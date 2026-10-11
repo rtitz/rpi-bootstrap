@@ -101,26 +101,6 @@
   when: ansible_facts['distribution'] == 'Ubuntu'
 
 # ==============================================================================
-# FLASH ENDURANCE & FILESYSTEM OPTIMIZATION
-# ==============================================================================
-- name: Deploy optimized unified filesystem matrix template
-  ansible.builtin.template:
-    src: fstab.j2
-    dest: /etc/fstab
-    owner: root
-    group: root
-    mode: '0644'
-  notify: Reboot
-
-- name: Restrict systemd-journald memory allocation size
-  ansible.builtin.lineinfile:
-    path: /etc/systemd/journald.conf
-    regexp: '^#?SystemMaxUse='
-    line: 'SystemMaxUse=150M' # Leaves a safe 106MB buffer on your 256MB tmpfs
-  notify: Restart Journald
-
-
-# ==============================================================================
 # SECURITY & OPENSSH HARDENING
 # ==============================================================================
 - name: Ensure SSH configuration drop-in directory is present

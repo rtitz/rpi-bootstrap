@@ -1,0 +1,103 @@
+---
+# ==============================================================================
+# PHASE 1: SSD BACKEND TOPOLOGY INITIALIZATION
+# ==============================================================================
+- name: Establish target mounting nodes for the SSD pool
+  ansible.builtin.file:
+    path: /mnt/storage
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+
+- name: Force immediate mount of the physical SSD partition via label
+  ansible.posix.mount:
+    path: /mnt/storage
+    src: LABEL=app-storage
+    fstype: ext4
+    opts: defaults,noatime,commit=60,nofail
+    state: mounted
+
+- name: Generate the persistent application directories inside the SSD pool
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+  loop:
+    - /mnt/storage/system-logs
+    - /mnt/storage/system-tmp
+    - /mnt/storage/podman-root
+    - /mnt/storage/local-backups
+
+- name: Sync active SD card logs to SSD before the bind mount takes over
+  ansible.builtin.command:
+    cmd: rsync -aX /var/log/ /mnt/storage/system-logs/
+    creates: /mnt/storage/system-logs/journal
+  failed_when: false
+
+# ==============================================================================
+# PHASE 2: PODMAN USER PERMISSION LAYER (Rootless)
+# ==============================================================================
+- name: Create rootless container bucket within the shared SSD partition
+  ansible.builtin.file:
+    path: /mnt/storage/podman-user-storage
+    state: directory
+    mode: '0700'
+    owner: "{{ ansible_user_uid }}"
+    group: "{{ ansible_user_gid }}"
+
+- name: Validate user-level container folder hierarchy exists on host
+  ansible.builtin.file:
+    path: "{{ ansible_env.HOME }}/.local/share/containers"
+    state: directory
+    mode: '0755'
+    owner: "{{ ansible_user_uid }}"
+    group: "{{ ansible_user_gid }}"
+
+- name: Link rootless storage path directly to the SSD pool via Symlink
+  ansible.builtin.file:
+    src: /mnt/storage/podman-user-storage
+    dest: "{{ ansible_env.HOME }}/.local/share/containers/storage"
+    state: link
+    force: yes
+    owner: "{{ ansible_user_uid }}"
+    group: "{{ ansible_user_gid }}"
+
+# ==============================================================================
+# PHASE 3: CONFIGURATION TEMPLATE DEPLOYMENT
+# ==============================================================================
+- name: Deploy optimized unified hybrid filesystem matrix template
+  ansible.builtin.template:
+    src: fstab.j2
+    dest: /etc/fstab
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Reboot
+
+- name: Configure persistent systemd-journald thresholds on the SSD
+  ansible.builtin.blockinfile:
+    path: /etc/systemd/journald.conf
+    insertafter: '^\[Journal\]'
+    block: |
+      Storage=persistent
+      SystemMaxUse=5G
+      SystemMaxFileSize=500M
+  notify: Restart Journald
+
+# ==============================================================================
+# PHASE 4: GLOBAL SWAP MITIGATION
+# ==============================================================================
+- name: Disable active system memory swap tracking lines instantly
+  ansible.builtin.command: swapoff -a
+  failed_when: false
+
+- name: Suppress downstream dphys-swapfile engines (Raspberry Pi OS Specific)
+  ansible.builtin.systemd:
+    name: dphys-swapfile
+    state: stopped
+    enabled: no
+  when: ansible_os_family == "Debian" and ('raspberrypi' in ansible_kernel or 'rpi' in ansible_kernel)
+  failed_when: false
