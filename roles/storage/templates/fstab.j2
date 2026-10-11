@@ -1,14 +1,19 @@
 # ==============================================================================
 # OPTIMIZED CLUSTER FLASH MEDIA FILE SYSTEM MATRIX (/etc/fstab)
-# DYNAMICALLY PROVISIONED VIA ANSIBLE CONFIGURATION MANAGEMENT
+# HYBRID SSD-BACKED STORAGE AND SYSTEM WEAR PROTECTION LAYERS
 # ==============================================================================
 
 # 1. Main Core System Partitions (Preserves exact active system hardware identifiers)
 {{ ansible_facts['mounts'] | selectattr('mount', 'equalto', '/') | map(attribute='device') | first }}   /               ext4    noatime,commit=60,errors=remount-ro  0 1
 {{ ansible_facts['mounts'] | selectattr('mount', 'equalto', '/boot/firmware') | map(attribute='device') | first }}   /boot/firmware  vfat    defaults,noatime                     0 2
 
-# 2. Volatile Operational RAM Disks (tmpfs)
-# Shields physical sectors from continuous trickle-write logging wear
-tmpfs            /tmp            tmpfs   defaults,noatime,nosuid,nodev,size=1G  0 0
-tmpfs            /var/tmp        tmpfs   defaults,noatime,nosuid,nodev,size=512M  0 0
-tmpfs            /var/log        tmpfs   defaults,noatime,nosuid,nodev,size=512M  0 0
+# 2. Primary External Hardware SSD Pool
+LABEL=app-storage  /mnt/storage    ext4    defaults,noatime,commit=60,nofail   0 2
+
+# 3. Persistent Write Paths (Redirected straight into the SSD pool via Bind Mounts)
+/mnt/storage/system-logs  /var/log            none    bind,nofail,noatime         0 0
+/mnt/storage/system-tmp   /var/tmp            none    bind,nofail,noatime         0 0
+/mnt/storage/podman-root  /var/lib/containers none    bind,nofail,noatime         0 0
+
+# 4. Volatile Speed Buffers (Safe RAM disk for rapid process scratch files only)
+tmpfs                     /tmp                tmpfs   defaults,noatime,nosuid,nodev,size=1G  0 0

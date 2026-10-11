@@ -29,13 +29,13 @@
     - /mnt/storage/system-logs
     - /mnt/storage/system-tmp
     - /mnt/storage/podman-root
-    - /mnt/storage/local-backups
+    - /mnt/storage/backup
 
 - name: Sync active SD card logs to SSD before the bind mount takes over
   ansible.builtin.command:
     cmd: rsync -aX /var/log/ /mnt/storage/system-logs/
-    creates: /mnt/storage/system-logs/journal
-  failed_when: false
+  # Only executes if /var/log is a normal folder on the SD card, NOT an active mount
+  when: ansible_facts['mounts'] | selectattr('mount', 'equalto', '/var/log') | list | length == 0
 
 # ==============================================================================
 # PHASE 2: PODMAN USER PERMISSION LAYER (Rootless)
@@ -56,14 +56,17 @@
     owner: "{{ ansible_user_uid }}"
     group: "{{ ansible_user_gid }}"
 
+- name: Check if rootless Podman storage symlink already exists
+  ansible.builtin.stat:
+    path: "{{ ansible_env.HOME }}/.local/share/containers/storage"
+  register: podman_symlink_check
+
 - name: Link rootless storage path directly to the SSD pool via Symlink
   ansible.builtin.file:
     src: /mnt/storage/podman-user-storage
     dest: "{{ ansible_env.HOME }}/.local/share/containers/storage"
     state: link
-    force: yes
-    owner: "{{ ansible_user_uid }}"
-    group: "{{ ansible_user_gid }}"
+  when: not podman_symlink_check.stat.islnk | default(false)
 
 # ==============================================================================
 # PHASE 3: CONFIGURATION TEMPLATE DEPLOYMENT
