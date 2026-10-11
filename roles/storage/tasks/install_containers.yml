@@ -1,0 +1,30 @@
+---
+# ==============================================================================
+# PHASE 1: NATIVE SYSTEM PACKAGE PROVISIONING
+# ==============================================================================
+- name: Synchronize apt caching indices and deploy the container runtime stack
+  ansible.builtin.apt:
+    name:
+      - podman
+      - podman-compose  # Managed natively via system packages, avoiding Python PIP
+      - podman-docker   # Adds the 'docker' command alias wrapper for compatibility
+      - uidmap          # Mandated requirement for unprivileged user namespaces
+      - rsync           # Engine dependency for our storage synchronization syncs
+    state: present
+    update_cache: yes
+
+# ==============================================================================
+# PHASE 2: GLOBAL ENGINE RUNTIME CONFIGURATION SAFEGUARDS
+# ==============================================================================
+- name: Inspect presence of the global container storage profile
+  ansible.builtin.stat:
+    path: /etc/containers/storage.conf
+  register: target_storage_conf_check
+
+- name: Force default filesystem tracking parameter metrics to OverlayFS
+  ansible.builtin.lineinfile:
+    path: /etc/containers/storage.conf
+    regexp: '^driver\s*=\s*'
+    line: 'driver = "overlay"'
+  # Only executes if the package configuration profile actually exists on disk
+  when: target_storage_conf_check.stat.exists

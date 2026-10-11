@@ -1,0 +1,43 @@
+---
+# 1. Execute system tools installation unconditionally
+- name: Trigger container stack installation script tasks
+  ansible.builtin.include_tasks: install_containers.yml
+
+# 2. Process physical external storage nodes conditionally if requested
+- name: Initialize custom external storage layers conditionally
+  ansible.builtin.include_tasks: container_storage.yml
+  when: enable_container_storage | default(false)
+
+# 3. Compile the system fstab file tracking template matrix
+- name: Deploy optimized unified filesystem matrix template
+  ansible.builtin.template:
+    src: fstab.j2
+    dest: /etc/fstab
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Reboot
+
+# 3. Dynamic journaling constraint adjustments based on active hardware layout
+- name: Configure systemd-journald thresholds
+  ansible.builtin.blockinfile:
+    path: /etc/systemd/journald.conf
+    insertafter: '^\[Journal\]'
+    block: |
+      Storage=persistent
+      SystemMaxUse={{ '5G' if (enable_container_storage | default(false)) else '150M' }}
+      SystemMaxFileSize={{ '500M' if (enable_container_storage | default(false)) else '50M' }}
+  notify: Restart Journald
+
+# 4. Global swap mitigations...
+- name: Disable active system memory swap tracking lines instantly
+  ansible.builtin.command: swapoff -a
+  failed_when: false
+
+- name: Suppress downstream dphys-swapfile engines (Raspberry Pi OS Specific)
+  ansible.builtin.systemd:
+    name: dphys-swapfile
+    state: stopped
+    enabled: no
+    when: ansible_facts['os_family'] == "Debian" and ('raspberrypi' in ansible_facts['kernel'] or 'rpi' in ansible_facts['kernel'])
+  failed_when: false

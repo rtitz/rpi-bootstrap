@@ -1,0 +1,112 @@
+---
+# ==============================================================================
+# PHASE 1: DEDICATED UNPRIVILEGED CONTAINER USER MANAGEMENT
+# ==============================================================================
+- name: Ensure the dedicated container execution user account exists
+  ansible.builtin.user:
+    name: "{{ container_user }}"
+    shell: /bin/bash
+    create_home: yes
+    home: "{{ container_user_home }}"
+    system: yes # Secures the account by preventing interactive console password logins
+
+- name: Delegate subordinate namespace ranges for unprivileged runtime execution
+  ansible.builtin.lineinfile:
+    path: "/etc/{{ item }}"
+    line: "{{ container_user }}:100000:65536"
+    create: yes
+    mode: '0644'
+    owner: root
+    group: root
+  loop:
+    - subuid
+    - subgid
+
+- name: Extract system numeric identifiers for the targeted container user
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ container_user }}"
+
+- name: Map target user UID and GID facts dynamically
+  ansible.builtin.set_fact:
+    target_user_uid: "{{ ansible_facts.getent_passwd[container_user].1 }}"
+    target_user_gid: "{{ ansible_facts.getent_passwd[container_user].2 }}"
+
+- name: Force persistent background lifecycles via user linger configuration
+  ansible.builtin.command:
+    cmd: "loginctl enable-linger {{ container_user }}"
+    creates: "/var/lib/systemd/linger/{{ container_user }}"
+
+# ==============================================================================
+# PHASE 2: STORAGE INFRASTRUCTURE MATRIX PROVISIONING
+# ==============================================================================
+- name: Establish target mounting nodes for the storage pool
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+  loop:
+    - "{{ storage_mount_path }}"
+    - /var/lib/containers # Generic landing pad for container engine root layers
+
+- name: Force immediate mount of the physical partition via label
+  ansible.posix.mount:
+    path: "{{ storage_mount_path }}"
+    src: "LABEL={{ storage_label }}"
+    fstype: ext4
+    opts: defaults,noatime,commit=60,nofail
+    state: mounted
+
+- name: Generate persistent system directories inside the storage pool
+  ansible.builtin.file:
+    path: "{{ storage_mount_path }}/{{ item }}"
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+  loop:
+    - system-logs
+    - system-tmp
+    - container-root
+    - backup
+
+- name: Sync active SD card logs to storage before the bind mount takes over
+  ansible.builtin.command:
+    cmd: "rsync -aX /var/log/ {{ storage_mount_path }}/system-logs/"
+  when: ansible_facts['mounts'] | selectattr('mount', 'equalto', '/var/log') | list | length == 0
+
+# ==============================================================================
+# PHASE 3: USER ENGINE MAPPING LAYERS
+# ==============================================================================
+- name: Create rootless engine storage folder within the shared partition
+  ansible.builtin.file:
+    path: "{{ storage_mount_path }}/container-user-storage"
+    state: directory
+    mode: '0700'
+    owner: "{{ target_user_uid }}"
+    group: "{{ target_user_gid }}"
+
+- name: Validate user-level container engine folder hierarchy exists on host
+  ansible.builtin.file:
+    path: "{{ container_user_home }}/.local/share/containers"
+    state: directory
+    mode: '0755'
+    owner: "{{ target_user_uid }}"
+    group: "{{ target_user_gid }}"
+
+- name: Check if rootless engine storage symlink already exists
+  ansible.builtin.stat:
+    path: "{{ container_user_home }}/.local/share/containers/storage"
+  register: engine_symlink_check
+  become: true
+
+- name: Link rootless storage path directly to the storage pool via Symlink
+  ansible.builtin.file:
+    src: "{{ storage_mount_path }}/container-user-storage"
+    dest: "{{ container_user_home }}/.local/share/containers/storage"
+    state: link
+    owner: "{{ target_user_uid }}"
+    group: "{{ target_user_gid }}"
+  when: not engine_symlink_check.stat.islnk | default(false)

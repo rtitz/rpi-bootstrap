@@ -17,3 +17,14 @@
 # - Ubuntu: end0
 # pi_network_interface: eth0
 # pi_network_interface_ubuntu: end0
+
+# Toggle feature flags
+enable_container_storage: true
+
+# Configurable hardware targets
+storage_label: "data"
+storage_mount_path: "/mnt/storage"
+
+# Target user configurations for rootless container runtimes
+container_user: "container"  # {{ ansible_user }} defaults to your current SSH deployment user
+container_user_home: "/home/{{ container_user }}"

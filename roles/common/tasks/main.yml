@@ -149,6 +149,7 @@
       - curl
       - git
       - rsync
+      - tree
     state: present
 
 - name: Deploy global shell aliases profile script
