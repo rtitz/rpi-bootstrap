@@ -4,17 +4,17 @@
 # ==============================================================================
 
 # 1. Main Core System Partitions (Preserves exact active system hardware identifiers)
-{{ ansible_facts['mounts'] | selectattr('mount', 'equalto', '/') | map(attribute='device') | first }}   /               ext4    noatime,commit=60,errors=remount-ro  0 1
+{{ ansible_facts['mounts'] | selectattr('mount', 'equalto', '/') | map(attribute='device') | first }}   /               ext4    noatime,commit=30,errors=remount-ro  0 1
 {{ ansible_facts['mounts'] | selectattr('mount', 'equalto', '/boot/firmware') | map(attribute='device') | first }}   /boot/firmware  vfat    defaults,noatime                     0 2
 
 {% if enable_container_storage | default(false) %}
 # 2. Primary External Hardware Storage Pool
-LABEL={{ storage_label }}  {{ storage_mount_path }}    ext4    defaults,noatime,commit=60,nofail   0 2
+LABEL={{ storage_label }}  {{ storage_mount_path }}    ext4    defaults,noatime,commit=30,nofail   0 2
 
-# 3. Persistent Write Paths (Redirected straight into the Storage pool via Bind Mounts)
-{{ storage_mount_path }}/system-logs       /var/log            none    bind,nofail,noatime         0 0
-{{ storage_mount_path }}/system-tmp        /var/tmp            none    bind,nofail,noatime         0 0
-{{ storage_mount_path }}/container-root    /var/lib/containers none    bind,nofail,noatime         0 0
+# 3. Persistent Write Paths (Guarded with local dependency declarations to prevent boot hangs)
+{{ storage_mount_path }}/system-logs       /var/log            none    bind,nofail,noatime,x-systemd.requires={{ storage_mount_path }}         0 0
+{{ storage_mount_path }}/system-tmp        /var/tmp            none    bind,nofail,noatime,x-systemd.requires={{ storage_mount_path }}         0 0
+{{ storage_mount_path }}/container-root    /var/lib/containers none    bind,nofail,noatime,x-systemd.requires={{ storage_mount_path }}         0 0
 {% else %}
 # 2. Volatile Operational RAM Disks (tmpfs fallback if storage is disabled)
 tmpfs            /var/log        tmpfs   defaults,noatime,nosuid,nodev,size=512M  0 0

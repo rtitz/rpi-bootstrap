@@ -18,6 +18,6 @@
     - { direction: 'incoming', policy: 'deny' }
     - { direction: 'outgoing', policy: 'allow' }
 
-- name: Enable UFW and reload
+- name: Configure UFW service
   community.general.ufw:
-    state: disabled
+    state: "{{ 'enabled' if enable_ufw_firewall else 'disabled' }}"

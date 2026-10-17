@@ -19,7 +19,8 @@ The project does the following:
 - disables Wi-Fi and Bluetooth by default
 - applies a few Raspberry Pi tuning changes for boot/config stability
 - installs common utilities and applies a hardened SSH configuration
-- sets a basic firewall with UFW
+- optionally enables UFW (disabled by default)
+- configures Podman and, by default, an external storage volume for system and container data
 - runs the same provisioning flow across a small Ansible inventory
 
 ---
@@ -42,18 +43,23 @@ The project does the following:
 │   ├── user-data
 │   └── user-data-ubuntu
 ├── group_vars/
-│   ├── all.yml
-│   └── vault.yml
+│   └── all.yml
 └── roles/
     ├── common/
     │   ├── tasks/
     │   │   └── main.yml
     │   └── templates/
-    │       ├── custom_aliases.sh.j2
-    │       └── fstab.j2
-    └── firewall/
+    │       └── custom_aliases.sh.j2
+    ├── firewall/
         └── tasks/
             └── main.yml
+    └── storage/
+        ├── tasks/
+        │   ├── container_storage.yml
+        │   ├── install_containers.yml
+        │   └── main.yml
+        └── templates/
+            └── fstab.j2
 ```
 
 ---
@@ -156,7 +162,7 @@ Example SSH connection:
 ssh automation@192.168.1.11
 ```
 
-The inventory file currently contains nodes like this:
+The inventory file contains nodes. Update the host address and SSH key path for your environment:
 
 ```ini
 [rpi_nodes]
@@ -175,32 +181,71 @@ ansible_ssh_private_key_file=~/.ssh/id_ed25519
 The project expects a working Ansible connection to the Pi nodes and a valid SSH key. The playbook is started with:
 
 ```bash
-ansible-playbook -i inventory main.yml --ask-vault-pass
+ansible-playbook -i inventory main.yml
 ```
 
 This playbook includes the roles:
 
+- `storage`
 - `common`
 - `firewall`
 
-The `common` role performs system-level hardening and package setup, including:
+The roles run in that order. The `storage` role installs the container runtime and configures storage (details below). The `common` role performs system-level hardening and package setup, including:
 
 - firmware and boot configuration adjustments
-- fstab template deployment
-- journald tuning
 - SSH configuration hardening
 - package installation
 - custom shell aliases
 
-The `firewall` role enables UFW and allows only SSH traffic by default.
+The `firewall` role enables UFW and allows only SSH traffic when `enable_ufw_firewall` is set to `true`. It is `false` by default.
 
-> `group_vars/vault.yml` is an example placeholder. Create or edit it with `ansible-vault create group_vars/vault.yml` or `ansible-vault edit group_vars/vault.yml` before storing encrypted values for your environment.
+### Storage configuration
+
+External container/system storage is enabled by default with `enable_container_storage: true`. The role expects a separate, already-partitioned ext4 filesystem labeled `data`; it mounts that filesystem at `/mnt/storage`. The role does not partition or format disks. Prepare the volume on a Linux system before running Ansible, or change `storage_label` and `storage_mount_path` in `group_vars/all.yml` to match your setup.
+
+The following is an example for a **dedicated, empty disk**. Identify the correct device first; replace `/dev/sdX` and `/dev/sdX1` with the actual disk and partition paths for your hardware. The commands that create a partition table and filesystem erase existing data on the selected device:
+
+```bash
+lsblk -f
+DISK=/dev/sdX
+PARTITION=/dev/sdX1
+sudo parted "$DISK" --script mklabel gpt mkpart primary ext4 1MiB 100%
+sudo mkfs.ext4 -L data "$PARTITION"
+lsblk -f
+```
+
+Do not run these commands against a disk containing data you need. Device names vary; for example, an SD-card partition may use a name such as `/dev/mmcblk0p1` rather than `/dev/sdX1`. Confirm the resulting label is `data` before provisioning.
+
+When external storage is enabled, the role creates `system-logs`, `system-tmp`, `container-root`, and `backup` directories under `/mnt/storage`. It migrates existing `/var/log` contents when appropriate, then configures bind mounts for:
+
+| Storage path | Host path / location |
+| --- | --- |
+| `/mnt/storage/system-logs` | `/var/log` |
+| `/mnt/storage/system-tmp` | `/var/tmp` |
+| `/mnt/storage/container-root` | `/var/lib/containers` |
+| `/mnt/storage/container-user-storage` | `/home/container/.local/share/containers/storage` (symlink) |
+
+`/tmp` is configured as a 1G tmpfs. Journald uses persistent storage, with limits of 5G total and 500M per file when external storage is enabled. If `enable_container_storage` is set to `false`, the role instead configures 512M tmpfs mounts for `/var/log` and `/var/tmp`, and reduces journald limits to 150M total and 50M per file. The `/tmp` tmpfs remains enabled.
+
+The storage role writes `/etc/fstab` from the current system's discovered root and boot devices. The template assumes an ext4 root filesystem mounted at `/` and a vfat boot filesystem at `/boot/firmware`; review this before applying it to a different OS or filesystem layout. The role also disables active swap and attempts to stop/disable `dphys-swapfile` on Raspberry Pi OS.
+
+### Container runtime
+
+The storage role installs Podman, `podman-compose`, `podman-docker` (a `docker` command compatibility wrapper), `uidmap`, `rsync`, and `fuse-overlayfs`, whether or not external storage is enabled. It configures the Podman storage driver as `overlay` and uses `fuse-overlayfs` when it creates a new system storage configuration.
+
+With external storage enabled, Ansible creates a dedicated system account named `container` by default, assigns subordinate UID/GID ranges beginning at `100000` with a size of `65536`, and enables systemd lingering so its user services can run without an active login session. The account's rootless container storage is linked to `/mnt/storage/container-user-storage`; system container data is stored through the `/var/lib/containers` bind mount.
+
+This configures the runtime and storage locations only. It does not create or start any container workloads or compose projects. The relevant settings are in `group_vars/all.yml`: `enable_container_storage`, `storage_label`, `storage_mount_path`, `container_user`, and `container_user_home`.
+
+### Ansible prerequisites
+
+`main.yml` references `group_vars/vault.yml`, but that file is not included in this repository. Provide the expected vault file before running the playbook, or adjust `main.yml` if your setup does not use it. The storage role also uses the `ansible.posix.mount` module; ensure the `ansible.posix` collection is installed on the Ansible controller.
 
 ---
 
 ## Notes
 
-- The examples are intentionally tuned for a Raspberry Pi 4/5 lab using Ubuntu 26.04 and Raspberry Pi OS Trixie.
+- The examples are intentionally tuned for a Raspberry Pi 4/5 lab using Ubuntu 26.04 or Raspberry Pi OS Trixie.
 - Interface names, static IPs, and SSH keys are examples and must be adjusted for your actual hardware and network.
 - If you plan to use a different hostname or network layout, adjust the cloud-init templates and the inventory before booting the hosts.
 
@@ -212,4 +257,4 @@ The `firewall` role enables UFW and allows only SSH traffic by default.
 2. Copy the cloud-init bootstrap files with the provided script.
 3. Insert the card into the Pi and boot it.
 4. Verify SSH access as the `automation` user.
-5. Run the Ansible playbook to harden and configure the node.
+5. Run the Ansible playbook to harden and configure the system.

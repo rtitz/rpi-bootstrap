@@ -1,4 +1,3 @@
----
 # 1. Execute system tools installation unconditionally
 - name: Trigger container stack installation script tasks
   ansible.builtin.include_tasks: install_containers.yml
@@ -16,7 +15,7 @@
     owner: root
     group: root
     mode: '0644'
-  notify: Reboot
+  changed_when: false
 
 # 3. Dynamic journaling constraint adjustments based on active hardware layout
 - name: Configure systemd-journald thresholds
@@ -29,15 +28,16 @@
       SystemMaxFileSize={{ '500M' if (enable_container_storage | default(false)) else '50M' }}
   notify: Restart Journald
 
-# 4. Global swap mitigations...
+# 4. Global swap mitigations
 - name: Disable active system memory swap tracking lines instantly
   ansible.builtin.command: swapoff -a
   failed_when: false
+  changed_when: false
 
 - name: Suppress downstream dphys-swapfile engines (Raspberry Pi OS Specific)
   ansible.builtin.systemd:
     name: dphys-swapfile
     state: stopped
     enabled: no
-    when: ansible_facts['os_family'] == "Debian" and ('raspberrypi' in ansible_facts['kernel'] or 'rpi' in ansible_facts['kernel'])
   failed_when: false
+  when: ansible_facts['os_family'] == "Debian" and ('raspberrypi' in ansible_facts['kernel'] or 'rpi' in ansible_facts['kernel'])

@@ -56,8 +56,9 @@
     path: "{{ storage_mount_path }}"
     src: "LABEL={{ storage_label }}"
     fstype: ext4
-    opts: defaults,noatime,commit=60,nofail
+    opts: defaults,noatime,commit=30,nofail
     state: mounted
+  changed_when: false
 
 - name: Generate persistent system directories inside the storage pool
   ansible.builtin.file:
@@ -72,10 +73,17 @@
     - container-root
     - backup
 
+- name: Check if storage log folder is already populated
+  ansible.builtin.find:
+    paths: "{{ storage_mount_path }}/system-logs"
+  register: existing_storage_logs
+
 - name: Sync active SD card logs to storage before the bind mount takes over
   ansible.builtin.command:
     cmd: "rsync -aX /var/log/ {{ storage_mount_path }}/system-logs/"
-  when: ansible_facts['mounts'] | selectattr('mount', 'equalto', '/var/log') | list | length == 0
+  when: 
+    - ansible_facts['mounts'] | selectattr('mount', 'equalto', '/var/log') | list | length == 0
+    - existing_storage_logs.matched == 0
 
 # ==============================================================================
 # PHASE 3: USER ENGINE MAPPING LAYERS
@@ -96,11 +104,18 @@
     owner: "{{ target_user_uid }}"
     group: "{{ target_user_gid }}"
 
-- name: Check if rootless engine storage symlink already exists
+- name: Check if rootless engine storage path target exists
   ansible.builtin.stat:
     path: "{{ container_user_home }}/.local/share/containers/storage"
-  register: engine_symlink_check
-  become: true
+  register: engine_storage_path_check
+
+- name: Safely remove standard folder if it conflicts with intended symlink
+  ansible.builtin.file:
+    path: "{{ container_user_home }}/.local/share/containers/storage"
+    state: absent
+  when: 
+    - engine_storage_path_check.stat.exists 
+    - not engine_storage_path_check.stat.islnk
 
 - name: Link rootless storage path directly to the storage pool via Symlink
   ansible.builtin.file:
@@ -109,4 +124,3 @@
     state: link
     owner: "{{ target_user_uid }}"
     group: "{{ target_user_gid }}"
-  when: not engine_symlink_check.stat.islnk | default(false)

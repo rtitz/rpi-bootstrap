@@ -76,7 +76,7 @@
 # BOOT PARTITION SAFETY HACKS (PREVENTS UBUNTU NO-SPACE EXTRACTION CRASHES)
 # ==============================================================================
 
-- name: Create custom dracut optimization directory template
+- name: Create custom dracut optimization directory template (Ubuntu only)
   ansible.builtin.file:
     path: /etc/dracut.conf.d
     state: directory
@@ -85,7 +85,7 @@
     mode: '0755'
   when: ansible_facts['distribution'] == 'Ubuntu'
 
-- name: Deploy hostonly and high-efficiency XZ compression profiles for Dracut
+- name: Deploy hostonly and high-efficiency XZ compression profiles for Dracut (Ubuntu only)
   ansible.builtin.copy:
     dest: /etc/dracut.conf.d/pi-optimization.conf
     content: |

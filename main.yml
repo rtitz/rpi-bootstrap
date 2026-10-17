@@ -31,5 +31,5 @@
     - name: Force immediate reboot after upgrades
       ansible.builtin.reboot:
         msg: "Ansible forcing reboot to apply kernel and OS updates."
-        reboot_timeout: 120
+        reboot_timeout: 180
       when: reboot_required_file.stat.exists
