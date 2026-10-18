@@ -55,6 +55,7 @@ users:
     passwd: "!"
     ssh_authorized_keys:
       - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIF976V9tbvLrZGU03BHC6JoeKK4DQDYS/d+DJGLL7WlC
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIF7QqzkkT6U4FSZppPWr08GgNLkEKyhbiRweHYpIxkV6
 
 packages:
   - vim
