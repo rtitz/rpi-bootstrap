@@ -22,30 +22,11 @@
 
 - name: Register and enable all system services on boot via the user systemd bus
   ansible.builtin.command:
-    cmd: "systemctl --user --machine={{ container_user }}@.host {{ item.action }} {{ item.unit }}"
+    cmd: "systemctl --user --machine={{ container_user }}@.host enable --now {{ item }}"
   become: true
+  become_user: root
   loop:
-    - { unit: "podman-git-updater.timer", action: "enable" }
-    - { unit: "podman-git-updater.timer", action: "start" }
-  changed_when: false # Optional: You can refine this with a custom 'register' and 'failed_when' loop if desired
+    - "podman-git-updater.timer"
+    - "podman.socket"
+  changed_when: false # systemctl is self-validating and handles state skipping silently under the hood
 
-
-#- name: Register and enable all container services on boot via the user systemd bus
-#  ansible.builtin.command:
-#    cmd: "systemctl --user --machine={{ container_user }}@.host enable {{ item }}"
-#  become: true # Stays as root to write completely outside of unprivileged /var/tmp space
-#  loop:
-#    - podman-git-updater.timer
-#  changed_when: false
-#  environment:
-#    # Use the dynamically mapped container_uid fact instead of a hardcoded default!
-#    XDG_RUNTIME_DIR: "/run/user/{{ container_uid }}"
-#    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ container_uid }}/bus"
-#
-#- name: Start the system apps
-#  ansible.builtin.command:
-#    cmd: "systemctl --user --machine={{ container_user }}@.host start {{ item }}"
-#  become: true
-#  loop:
-#    - podman-git-updater.timer
-#  changed_when: false

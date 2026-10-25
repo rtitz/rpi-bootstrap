@@ -4,10 +4,12 @@
     name: systemd-journald
     state: restarted
     daemon_reload: yes
+  become: true
 
 - name: Systemd daemon reload
   ansible.builtin.systemd_service:
     daemon_reload: true
+  become: true
 
 - name: Restart SSH
   ansible.builtin.service:
@@ -17,12 +19,15 @@
     - ssh
     - sshd
   failed_when: false
+  become: true
 
 - name: Reload UFW firewall
   community.general.ufw:
     state: reloaded
+  become: true
 
 - name: Reboot
   ansible.builtin.reboot:
     msg: "Ansible triggered a reboot to apply the updated system state."
     reboot_timeout: 120
+  become: true

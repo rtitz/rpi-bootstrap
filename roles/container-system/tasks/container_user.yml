@@ -7,16 +7,20 @@
     name: "{{ container_user }}"
     state: present
     gid: "{{ container_gid }}"
+  become: true
+  become_user: root
 
 - name: Ensure the dedicated container execution user account exists
   ansible.builtin.user:
     name: "{{ container_user }}"
     group: "{{ container_user }}"
     shell: /bin/bash
-    create_home: yes
+    create_home: true
     home: "{{ container_user_home }}"
     uid: "{{ container_uid }}"
-    system: yes # Secures the account by preventing interactive console password logins
+    system: false # Leverages shadow-utils to auto-map subuid/subgid lines out-of-the-box
+  become: true
+  become_user: root
 
 - name: Ensure container user home directory has correct ownership
   ansible.builtin.file:
@@ -25,25 +29,25 @@
     owner: "{{ container_user }}"
     group: "{{ container_user }}"
     mode: '0755'
-  become: true # Must run as root to fix the permissions lock
+  become: true 
+  become_user: root
 
-- name: Delegate subordinate namespace ranges for unprivileged runtime execution
-  ansible.builtin.lineinfile:
-    path: "/etc/{{ item }}"
-    line: "{{ container_user }}:100000:65536"
-    create: yes
-    mode: '0644'
-    owner: root
-    group: root
-  loop:
-    - subuid
-    - subgid
+- name: Configure automatic user-space environment exports for interactive debugging
+  ansible.builtin.blockinfile:
+    path: "{{ container_user_home }}/.bashrc"
+    marker: "# {mark} ANSIBLE MANAGED PODMAN DBUS PATHS"
+    block: |
+      export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+      export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
+  become: true
+  become_user: root
 
 - name: Force persistent background lifecycles via user linger configuration
   ansible.builtin.command:
     cmd: "loginctl enable-linger {{ container_user }}"
     creates: "/var/lib/systemd/linger/{{ container_user }}"
   become: true
+  become_user: root
 
 - name: Assign unprivileged container user to log management groups
   ansible.builtin.user:
@@ -51,8 +55,9 @@
     groups:
       - adm
       - systemd-journal
-    append: yes
-  become: true  # Runs as root to modify system groups
+    append: true
+  become: true 
+  become_user: root
 
 - name: Ensure target user configuration directories exist
   ansible.builtin.file:
@@ -62,9 +67,11 @@
     group: "{{ container_user }}"
     mode: '0700'
   become: true
+  become_user: root
   loop:
     - .local/bin
     - .config/systemd/user
+    - .config/containers
     - .ssh
 
 - name: Place the shared SSH private key for GitHub authentication
@@ -76,6 +83,7 @@
     mode: '0600'
   no_log: true
   become: true
+  become_user: root
 
 - name: Configure global SSH options for the container user
   ansible.builtin.copy:
@@ -88,6 +96,7 @@
     group: "{{ container_user }}"
     mode: '0600'
   become: true
+  become_user: root
 
 # ==============================================================================
 # USER MAPPING WITH STORAGE
@@ -99,6 +108,8 @@
     mode: '0700'
     owner: "{{ container_uid }}"
     group: "{{ container_gid }}"
+  become: true
+  become_user: root
 
 - name: Validate user-level container engine folder hierarchy exists on host
   ansible.builtin.file:
@@ -107,11 +118,15 @@
     mode: '0755'
     owner: "{{ container_uid }}"
     group: "{{ container_gid }}"
+  become: true
+  become_user: root
 
 - name: Check if rootless engine storage path target exists
   ansible.builtin.stat:
     path: "{{ container_user_home }}/.local/share/containers/storage"
   register: engine_storage_path_check
+  become: true
+  become_user: root
 
 - name: Safely remove standard folder if it conflicts with intended symlink
   ansible.builtin.file:
@@ -120,6 +135,8 @@
   when: 
     - engine_storage_path_check.stat.exists 
     - not engine_storage_path_check.stat.islnk
+  become: true
+  become_user: root
 
 - name: Link rootless storage path directly to the storage pool via Symlink
   ansible.builtin.file:
@@ -128,13 +145,43 @@
     state: link
     owner: "{{ container_uid }}"
     group: "{{ container_gid }}"
+  become: true
+  become_user: root
 
-- name: Ensure external storage volume paths have correct unprivileged ownership
+- name: Inject local container storage runtime override configuration
+  ansible.builtin.copy:
+    dest: "{{ container_user_home }}/.config/containers/storage.conf"
+    owner: "{{ container_user }}"
+    group: "{{ container_user }}"
+    mode: '0644'
+    content: |
+      [storage]
+      driver = "overlay"
+      runroot = "{{ container_user_home }}/.local/share/containers/storage/run"
+  become: true
+  become_user: root
+
+- name: Deploy global container engine overrides to bypass system user runroot blocks
+  ansible.builtin.copy:
+    dest: "/etc/containers/containers.conf"
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      [engine]
+      # Forces Podman to natively construct runtime paths inside the user's home directory
+      # instead of defaulting to /run/user/UID for system accounts
+      runtime_dir = "{{ container_user_home }}/.local/share/containers/storage/run"
+  become: true
+  become_user: root
+
+- name: Ensure unprivileged container storage pool has correct recursive ownership
   ansible.builtin.file:
-    path: "/mnt/storage"
+    path: "{{ storage_mount_path }}/container-user-storage"
     state: directory
     recurse: true
     owner: "{{ container_user }}"
     group: "{{ container_user }}"
-    mode: '0755'
+    mode: '0700'
   become: true
+  become_user: root

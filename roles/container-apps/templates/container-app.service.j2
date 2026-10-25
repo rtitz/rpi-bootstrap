@@ -8,9 +8,10 @@ Type=simple
 WorkingDirectory={{ container_user_home }}
 Restart=always
 
-# Combined self-healing Git deployment layout
-# 1. Clones the repository if the target folder does not exist yet
-# 2. If the folder exists, steps inside, fetches the branch tracking references, and resets safely
+# Route background hooks straight to your persistent unprivileged runtime sockets
+Environment="XDG_RUNTIME_DIR=/run/user/{{ container_uid }}"
+
+# 1. Self-healing Git deployment layout
 ExecStartPre=/bin/bash -c '\
   if [ ! -d "{{ item.name }}" ]; then \
     git clone -b {{ item.branch }} {{ item.repo_url }} {{ item.name }}; \
@@ -18,12 +19,11 @@ ExecStartPre=/bin/bash -c '\
     cd {{ item.name }} && git fetch origin {{ item.branch }} && git reset --hard origin/{{ item.branch }}; \
   fi'
 
-# 3. Spin up the container stack and force local image recompilation natively
-ExecStart=/usr/bin/podman-compose --podman-path /usr/bin/podman -f {{ container_user_home }}/{{ item.name }}/compose.yaml up --build
+# 2. Step into the freshly updated repo folder and initialize the attached stack natively
+ExecStart=/bin/bash -c 'cd {{ item.name }} && /usr/bin/podman compose up --build'
 
-
-# 4. Tear down the stack securely when stopping the unit
-ExecStop=/usr/bin/podman-compose --podman-path /usr/bin/podman -f {{ container_user_home }}/{{ item.name }}/compose.yaml down
+# 3. Step into the repo folder to securely pull down your application nodes on termination
+ExecStop=/bin/bash -c 'cd {{ item.name }} && /usr/bin/podman compose down'
 
 [Install]
 WantedBy=default.target
