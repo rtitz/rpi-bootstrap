@@ -1,6 +1,6 @@
 ---
 # ==============================================================================
-# PHASE 1: NATIVE SYSTEM PACKAGE PROVISIONING
+# SYSTEM PACKAGE PROVISIONING
 # ==============================================================================
 - name: Synchronize apt caching indices and deploy the container runtime stack
   ansible.builtin.apt:
@@ -15,7 +15,7 @@
     update_cache: yes
 
 # ==============================================================================
-# PHASE 2: GLOBAL ENGINE RUNTIME CONFIGURATION SAFEGUARDS
+# GLOBAL ENGINE RUNTIME CONFIGURATION SAFEGUARDS
 # ==============================================================================
 - name: Inspect presence of the global container storage profile
   ansible.builtin.stat:
@@ -42,3 +42,4 @@
     regexp: '^driver\s*=\s*'
     line: 'driver = "overlay"'
   when: target_storage_conf_check.stat.exists
+

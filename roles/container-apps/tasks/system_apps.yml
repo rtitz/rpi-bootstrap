@@ -1,0 +1,51 @@
+---
+- name: Deploy the background checker loop bash script
+  ansible.builtin.template:
+    src: podman-git-updater.sh.j2
+    dest: "{{ container_user_home }}/.local/bin/podman-git-updater.sh"
+    owner: "{{ container_user }}"
+    group: "{{ container_user }}"
+    mode: '0755'
+  become: true
+
+- name: Deploy background updater Systemd service and timer maps
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ container_user_home }}/.config/systemd/user/{{ item }}"
+    owner: "{{ container_user }}"
+    group: "{{ container_user }}"
+    mode: '0644'
+  become: true
+  loop:
+    - podman-git-updater.service
+    - podman-git-updater.timer
+
+- name: Register and enable all system services on boot via the user systemd bus
+  ansible.builtin.command:
+    cmd: "systemctl --user --machine={{ container_user }}@.host {{ item.action }} {{ item.unit }}"
+  become: true
+  loop:
+    - { unit: "podman-git-updater.timer", action: "enable" }
+    - { unit: "podman-git-updater.timer", action: "start" }
+  changed_when: false # Optional: You can refine this with a custom 'register' and 'failed_when' loop if desired
+
+
+#- name: Register and enable all container services on boot via the user systemd bus
+#  ansible.builtin.command:
+#    cmd: "systemctl --user --machine={{ container_user }}@.host enable {{ item }}"
+#  become: true # Stays as root to write completely outside of unprivileged /var/tmp space
+#  loop:
+#    - podman-git-updater.timer
+#  changed_when: false
+#  environment:
+#    # Use the dynamically mapped container_uid fact instead of a hardcoded default!
+#    XDG_RUNTIME_DIR: "/run/user/{{ container_uid }}"
+#    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ container_uid }}/bus"
+#
+#- name: Start the system apps
+#  ansible.builtin.command:
+#    cmd: "systemctl --user --machine={{ container_user }}@.host start {{ item }}"
+#  become: true
+#  loop:
+#    - podman-git-updater.timer
+#  changed_when: false

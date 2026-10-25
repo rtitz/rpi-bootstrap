@@ -1,14 +1,31 @@
 ---
 # ==============================================================================
-# PHASE 1: DEDICATED UNPRIVILEGED CONTAINER USER MANAGEMENT
+# DEDICATED UNPRIVILEGED CONTAINER USER MANAGEMENT
 # ==============================================================================
+- name: Ensure the dedicated container execution user group exists
+  ansible.builtin.group:
+    name: "{{ container_user }}"
+    state: present
+    gid: "{{ container_gid }}"
+
 - name: Ensure the dedicated container execution user account exists
   ansible.builtin.user:
     name: "{{ container_user }}"
+    group: "{{ container_user }}"
     shell: /bin/bash
     create_home: yes
     home: "{{ container_user_home }}"
+    uid: "{{ container_uid }}"
     system: yes # Secures the account by preventing interactive console password logins
+
+- name: Ensure container user home directory has correct ownership
+  ansible.builtin.file:
+    path: "{{ container_user_home }}"
+    state: directory
+    owner: "{{ container_user }}"
+    group: "{{ container_user }}"
+    mode: '0755'
+  become: true # Must run as root to fix the permissions lock
 
 - name: Delegate subordinate namespace ranges for unprivileged runtime execution
   ansible.builtin.lineinfile:
@@ -22,87 +39,74 @@
     - subuid
     - subgid
 
-- name: Extract system numeric identifiers for the targeted container user
-  ansible.builtin.getent:
-    database: passwd
-    key: "{{ container_user }}"
-
-- name: Map target user UID and GID facts dynamically
-  ansible.builtin.set_fact:
-    target_user_uid: "{{ ansible_facts.getent_passwd[container_user].1 }}"
-    target_user_gid: "{{ ansible_facts.getent_passwd[container_user].2 }}"
-
 - name: Force persistent background lifecycles via user linger configuration
   ansible.builtin.command:
     cmd: "loginctl enable-linger {{ container_user }}"
     creates: "/var/lib/systemd/linger/{{ container_user }}"
+  become: true
 
-# ==============================================================================
-# PHASE 2: STORAGE INFRASTRUCTURE MATRIX PROVISIONING
-# ==============================================================================
-- name: Establish target mounting nodes for the storage pool
+- name: Assign unprivileged container user to log management groups
+  ansible.builtin.user:
+    name: "{{ container_user }}"
+    groups:
+      - adm
+      - systemd-journal
+    append: yes
+  become: true  # Runs as root to modify system groups
+
+- name: Ensure target user configuration directories exist
   ansible.builtin.file:
-    path: "{{ item }}"
+    path: "{{ container_user_home }}/{{ item }}"
     state: directory
-    mode: '0755'
-    owner: root
-    group: root
+    owner: "{{ container_user }}"
+    group: "{{ container_user }}"
+    mode: '0700'
+  become: true
   loop:
-    - "{{ storage_mount_path }}"
-    - /var/lib/containers # Generic landing pad for container engine root layers
+    - .local/bin
+    - .config/systemd/user
+    - .ssh
 
-- name: Force immediate mount of the physical partition via label
-  ansible.posix.mount:
-    path: "{{ storage_mount_path }}"
-    src: "LABEL={{ storage_label }}"
-    fstype: ext4
-    opts: defaults,noatime,commit=30,nofail
-    state: mounted
-  changed_when: false
+- name: Place the shared SSH private key for GitHub authentication
+  ansible.builtin.copy:
+    content: "{{ vault_container_ssh_key }}"
+    dest: "{{ container_user_home }}/.ssh/id_ed25519"
+    owner: "{{ container_user }}"
+    group: "{{ container_user }}"
+    mode: '0600'
+  no_log: true
+  become: true
 
-- name: Generate persistent system directories inside the storage pool
-  ansible.builtin.file:
-    path: "{{ storage_mount_path }}/{{ item }}"
-    state: directory
-    mode: '0755'
-    owner: root
-    group: root
-  loop:
-    - system-logs
-    - system-tmp
-    - container-root
-    - backup
-
-- name: Check if storage log folder is already populated
-  ansible.builtin.find:
-    paths: "{{ storage_mount_path }}/system-logs"
-  register: existing_storage_logs
-
-- name: Sync active SD card logs to storage before the bind mount takes over
-  ansible.builtin.command:
-    cmd: "rsync -aX /var/log/ {{ storage_mount_path }}/system-logs/"
-  when: 
-    - ansible_facts['mounts'] | selectattr('mount', 'equalto', '/var/log') | list | length == 0
-    - existing_storage_logs.matched == 0
+- name: Configure global SSH options for the container user
+  ansible.builtin.copy:
+    content: |
+      Host github.com
+          IdentityFile ~/.ssh/id_ed25519
+          StrictHostKeyChecking accept-new
+    dest: "{{ container_user_home }}/.ssh/config"
+    owner: "{{ container_user }}"
+    group: "{{ container_user }}"
+    mode: '0600'
+  become: true
 
 # ==============================================================================
-# PHASE 3: USER ENGINE MAPPING LAYERS
+# USER MAPPING WITH STORAGE
 # ==============================================================================
 - name: Create rootless engine storage folder within the shared partition
   ansible.builtin.file:
     path: "{{ storage_mount_path }}/container-user-storage"
     state: directory
     mode: '0700'
-    owner: "{{ target_user_uid }}"
-    group: "{{ target_user_gid }}"
+    owner: "{{ container_uid }}"
+    group: "{{ container_gid }}"
 
 - name: Validate user-level container engine folder hierarchy exists on host
   ansible.builtin.file:
     path: "{{ container_user_home }}/.local/share/containers"
     state: directory
     mode: '0755'
-    owner: "{{ target_user_uid }}"
-    group: "{{ target_user_gid }}"
+    owner: "{{ container_uid }}"
+    group: "{{ container_gid }}"
 
 - name: Check if rootless engine storage path target exists
   ansible.builtin.stat:
@@ -122,5 +126,15 @@
     src: "{{ storage_mount_path }}/container-user-storage"
     dest: "{{ container_user_home }}/.local/share/containers/storage"
     state: link
-    owner: "{{ target_user_uid }}"
-    group: "{{ target_user_gid }}"
+    owner: "{{ container_uid }}"
+    group: "{{ container_gid }}"
+
+- name: Ensure external storage volume paths have correct unprivileged ownership
+  ansible.builtin.file:
+    path: "/mnt/storage"
+    state: directory
+    recurse: true
+    owner: "{{ container_user }}"
+    group: "{{ container_user }}"
+    mode: '0755'
+  become: true

@@ -7,7 +7,7 @@
 {{ ansible_facts['mounts'] | selectattr('mount', 'equalto', '/') | map(attribute='device') | first }}   /               ext4    noatime,commit=30,errors=remount-ro  0 1
 {{ ansible_facts['mounts'] | selectattr('mount', 'equalto', '/boot/firmware') | map(attribute='device') | first }}   /boot/firmware  vfat    defaults,noatime                     0 2
 
-{% if enable_container_storage | default(false) %}
+{% if enable_container | default(false) %}
 # 2. Primary External Hardware Storage Pool
 LABEL={{ storage_label }}  {{ storage_mount_path }}    ext4    defaults,noatime,commit=30,nofail   0 2
 

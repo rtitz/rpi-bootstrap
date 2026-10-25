@@ -1,0 +1,49 @@
+---
+# ==============================================================================
+# STORAGE  PROVISIONING
+# ==============================================================================
+- name: Establish target mounting nodes for the storage pool
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+  loop:
+    - "{{ storage_mount_path }}"
+    - /var/lib/containers # Generic landing pad for container engine root layers
+
+- name: Force immediate mount of the physical partition via label
+  ansible.posix.mount:
+    path: "{{ storage_mount_path }}"
+    src: "LABEL={{ storage_label }}"
+    fstype: ext4
+    opts: defaults,noatime,commit=30,nofail
+    state: mounted
+  changed_when: false
+
+- name: Generate persistent system directories inside the storage pool
+  ansible.builtin.file:
+    path: "{{ storage_mount_path }}/{{ item }}"
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+  loop:
+    - system-logs
+    - system-tmp
+    - container-root
+    - backup
+
+- name: Check if storage log folder is already populated
+  ansible.builtin.find:
+    paths: "{{ storage_mount_path }}/system-logs"
+  register: existing_storage_logs
+
+- name: Sync active SD card logs to storage before the bind mount takes over
+  ansible.builtin.command:
+    cmd: "rsync -aX /var/log/ {{ storage_mount_path }}/system-logs/"
+  when: 
+    - ansible_facts['mounts'] | selectattr('mount', 'equalto', '/var/log') | list | length == 0
+    - existing_storage_logs.matched == 0
+

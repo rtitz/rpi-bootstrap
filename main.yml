@@ -20,6 +20,8 @@
         - storage
         - common
         - firewall
+        - container-system
+        - container-apps
       loop_control:
         loop_var: role_item
 

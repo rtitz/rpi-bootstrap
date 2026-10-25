@@ -1,0 +1,29 @@
+[Unit]
+Description=Systemd wrapper for {{ item.name }} container stack
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory={{ container_user_home }}
+Restart=always
+
+# Combined self-healing Git deployment layout
+# 1. Clones the repository if the target folder does not exist yet
+# 2. If the folder exists, steps inside, fetches the branch tracking references, and resets safely
+ExecStartPre=/bin/bash -c '\
+  if [ ! -d "{{ item.name }}" ]; then \
+    git clone -b {{ item.branch }} {{ item.repo_url }} {{ item.name }}; \
+  else \
+    cd {{ item.name }} && git fetch origin {{ item.branch }} && git reset --hard origin/{{ item.branch }}; \
+  fi'
+
+# 3. Spin up the container stack and force local image recompilation natively
+ExecStart=/usr/bin/podman-compose --podman-path /usr/bin/podman -f {{ container_user_home }}/{{ item.name }}/compose.yaml up --build
+
+
+# 4. Tear down the stack securely when stopping the unit
+ExecStop=/usr/bin/podman-compose --podman-path /usr/bin/podman -f {{ container_user_home }}/{{ item.name }}/compose.yaml down
+
+[Install]
+WantedBy=default.target

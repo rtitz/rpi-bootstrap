@@ -1,0 +1,6 @@
+---
+- name: Container-System-Apps
+  ansible.builtin.include_tasks: system_apps.yml
+
+- name: Container-User-Apps
+  ansible.builtin.include_tasks: user_apps.yml

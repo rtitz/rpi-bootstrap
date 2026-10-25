@@ -1,0 +1,9 @@
+---
+- name: Container-Storage
+  ansible.builtin.include_tasks: container_storage.yml
+
+- name: Container-User
+  ansible.builtin.include_tasks: container_user.yml
+
+- name: Container-Engine
+  ansible.builtin.include_tasks: container_engine.yml

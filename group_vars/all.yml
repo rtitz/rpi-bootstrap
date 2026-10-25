@@ -3,7 +3,7 @@
 enable_ufw_firewall: false
 
 # Container storage feature flag
-enable_container_storage: true
+enable_container: true
 
 # Configurable hardware targets (for containers)
 storage_label: "data"
@@ -11,4 +11,19 @@ storage_mount_path: "/mnt/storage"
 
 # Target user configurations for rootless container runtimes (for containers)
 container_user: "container"  # {{ ansible_user }} defaults to your current SSH deployment user
-container_user_home: "/home/{{ container_user }}"
+container_uid: 1001
+container_gid: 1001
+container_user_home: "/home/container"
+container_ssh_key: "{{ vault_container_ssh_key }}" # PUBLIC KEY IS: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIO/T9Cr9TnhGMGGVkf1RIjyN1RzAohLSIJJSGBS7VV+Q
+
+# Simplified container tracking registry
+monitored_containers:
+  - name: homeassistant
+    repo_url: "git@github.com:rtitz/homeassistant-container.git"
+    branch: main
+#  - name: solar-monitor
+#    repo_url: "git@github.com:rtitz/solar-monitor.git"
+#    branch: main
+#  - name: wallbox-controller
+#    repo_url: "git@github.com:rtitz/wallbox-controller.git"
+#    branch: main

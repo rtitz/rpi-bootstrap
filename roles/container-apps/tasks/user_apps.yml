@@ -1,0 +1,29 @@
+---
+- name: Deploy application Systemd services definitions
+  ansible.builtin.template:
+    src: container-app.service.j2
+    dest: "{{ container_user_home }}/.config/systemd/user/container-{{ item.name }}.service"
+    owner: "{{ container_user }}"
+    group: "{{ container_user }}"
+    mode: '0644'
+  become: true
+  loop: "{{ monitored_containers }}"
+
+- name: Register and enable all container services on boot via the user systemd bus
+  ansible.builtin.command:
+    cmd: "systemctl --user --machine={{ container_user }}@.host enable --now {{ item }}"
+  become: true
+  loop: "{{ monitored_containers | map(attribute='name') | map('regex_replace', '^(.*)$', 'container-\\1.service') | list }}"
+  changed_when: false # Optional: You can refine this with a custom 'register' and 'failed_when' loop if desired
+
+#- name: Register and enable all container services on boot via the user systemd bus
+#  ansible.builtin.command:
+#    cmd: "systemctl --user --machine={{ container_user }}@.host enable {{ item }}"
+#  become: true # Stays as root to write completely outside of unprivileged /var/tmp space
+#  loop: "{{ monitored_containers | map(attribute='name') | map('regex_replace', '^(.*)$', 'container-\\1.service') | list }}"
+#  changed_when: false
+#  environment:
+#    # Use the dynamically mapped container_uid fact instead of a hardcoded default!
+#    XDG_RUNTIME_DIR: "/run/user/{{ container_uid }}"
+#    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ container_uid }}/bus"
+

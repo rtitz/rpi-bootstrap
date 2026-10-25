@@ -181,7 +181,7 @@ ansible_ssh_private_key_file=~/.ssh/id_ed25519
 The project expects a working Ansible connection to the Pi nodes and a valid SSH key. The playbook is started with:
 
 ```bash
-ansible-playbook -i inventory main.yml
+ansible-playbook -i inventory main.yml --ask-vault-pass
 ```
 
 This playbook includes the roles:
@@ -201,7 +201,7 @@ The `firewall` role enables UFW and allows only SSH traffic when `enable_ufw_fir
 
 ### Storage configuration
 
-External container/system storage is enabled by default with `enable_container_storage: true`. The role expects a separate, already-partitioned ext4 filesystem labeled `data`; it mounts that filesystem at `/mnt/storage`. The role does not partition or format disks. Prepare the volume on a Linux system before running Ansible, or change `storage_label` and `storage_mount_path` in `group_vars/all.yml` to match your setup.
+External container/system storage is enabled by default with `enable_container: true`. The role expects a separate, already-partitioned ext4 filesystem labeled `data`; it mounts that filesystem at `/mnt/storage`. The role does not partition or format disks. Prepare the volume on a Linux system before running Ansible, or change `storage_label` and `storage_mount_path` in `group_vars/all.yml` to match your setup.
 
 The following is an example for a **dedicated, empty disk**. Identify the correct device first; replace `/dev/sdX` and `/dev/sdX1` with the actual disk and partition paths for your hardware. The commands that create a partition table and filesystem erase existing data on the selected device:
 
@@ -225,7 +225,7 @@ When external storage is enabled, the role creates `system-logs`, `system-tmp`, 
 | `/mnt/storage/container-root` | `/var/lib/containers` |
 | `/mnt/storage/container-user-storage` | `/home/container/.local/share/containers/storage` (symlink) |
 
-`/tmp` is configured as a 1G tmpfs. Journald uses persistent storage, with limits of 5G total and 500M per file when external storage is enabled. If `enable_container_storage` is set to `false`, the role instead configures 512M tmpfs mounts for `/var/log` and `/var/tmp`, and reduces journald limits to 150M total and 50M per file. The `/tmp` tmpfs remains enabled.
+`/tmp` is configured as a 1G tmpfs. Journald uses persistent storage, with limits of 5G total and 500M per file when external storage is enabled. If `enable_container` is set to `false`, the role instead configures 512M tmpfs mounts for `/var/log` and `/var/tmp`, and reduces journald limits to 150M total and 50M per file. The `/tmp` tmpfs remains enabled.
 
 The storage role writes `/etc/fstab` from the current system's discovered root and boot devices. The template assumes an ext4 root filesystem mounted at `/` and a vfat boot filesystem at `/boot/firmware`; review this before applying it to a different OS or filesystem layout. The role also disables active swap and attempts to stop/disable `dphys-swapfile` on Raspberry Pi OS.
 
