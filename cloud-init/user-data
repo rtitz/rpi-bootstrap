@@ -1,5 +1,5 @@
 #cloud-config
-timezone: Europe/Berlin
+timezone: UTC
 
 # System Language (Locale) set to US English, and explicitly forcing first-boot generation
 locale: en_US.UTF-8
