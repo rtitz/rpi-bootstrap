@@ -17,9 +17,9 @@
       ansible.builtin.include_role:
         name: "{{ role_item }}"
       loop:
-        #- storage
-        #- common
-        #- firewall
+        - storage
+        - common
+        - firewall
         - container-system
         - container-apps
       loop_control:

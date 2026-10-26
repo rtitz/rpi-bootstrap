@@ -16,6 +16,12 @@
     mode: '0644'
     force: no # CRITICAL: Ensures the file is written ONCE on first run and NEVER overwritten or duplicated later
 
+# Set timezone
+- name: Set system timezone
+  community.general.timezone:
+    name: "{{ timezone }}"
+  become: true
+
 # ==============================================================================
 # HARDWARE TUNING & FIRMWARE LOCKDOWN
 # ==============================================================================

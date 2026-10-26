@@ -1,4 +1,7 @@
 ---
+# Timezone
+timezone: "UTC" # Europe/Berlin
+
 # Toggle feature flags
 enable_ufw_firewall: false
 
