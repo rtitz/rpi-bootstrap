@@ -19,7 +19,8 @@
 # Set timezone
 - name: Set system timezone
   community.general.timezone:
-    name: "{{ timezone }}"
+    name: "{{ timezone | default('UTC') }}"
+    hwclock: "UTC" # Hardware clock stays on UTC; OS translates it to the configured timezone
   become: true
 
 # ==============================================================================
