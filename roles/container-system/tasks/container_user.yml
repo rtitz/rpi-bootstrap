@@ -161,6 +161,14 @@
   become: true
   become_user: root
 
+- name: Create global container engine config dir
+  ansible.builtin.file:
+    path: "/etc/containers/"
+    state: directory
+    mode: '0755'
+  become: true
+  become_user: root
+
 - name: Deploy global container engine overrides to bypass system user runroot blocks
   ansible.builtin.copy:
     dest: "/etc/containers/containers.conf"
