@@ -86,7 +86,7 @@
   become: true
   become_user: root
   loop:
-    - { path: "/var/log", mode: "0755", group: "syslog" }
+    - { path: "/var/log", mode: "0755", group: "root" }
     - { path: "/var/tmp", mode: "1777" } # 1777 enforces the sticky bit required for system shared tmp
     - { path: "/var/lib/containers", mode: "0711" } # 0711 lets rootless graph drivers explore nested boundaries
     - { path: "/var/lib/systemd/coredump", mode: "0755" } # Required for secure systemd-coredump processing
