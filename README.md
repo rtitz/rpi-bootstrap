@@ -117,6 +117,7 @@ Important: do not eject the card after writing the image. The boot partition mus
 ```bash
 cd cloud-init/
 ./apply-user-data-to-sd-card.sh
+sync
 ```
 
 The script detects the active boot mount, writes `user-data` and the matching network config to the correct partition, and then ejects the full removable disk rather than only the partition. If the volume is not mounted or the script exits early, eject the card manually with the device path instead:
