@@ -38,8 +38,10 @@
   loop:
     - system-logs
     - system-tmp
+    - system-coredump
     - container-root
     - backup
+    - home
 
 - name: Check if storage log folder is already populated
   ansible.builtin.find:
@@ -65,14 +67,14 @@
     path: "{{ item.path }}"
     src: "{{ item.src }}"
     fstype: none
-    opts: bind,defaults
+    opts: "defaults,bind,noatime,nofail"
     state: mounted
   become: true
-  become_user: root
   loop:
     - { path: "/var/log", src: "{{ storage_mount_path }}/system-logs" }
     - { path: "/var/tmp", src: "{{ storage_mount_path }}/system-tmp" }
     - { path: "/var/lib/containers", src: "{{ storage_mount_path }}/container-root" }
+    - { path: "/var/lib/systemd/coredump", src: "{{ storage_mount_path }}/system-coredump" }
 
 - name: Ensure correct file permission modes on active system runtime nodes
   ansible.builtin.file:
@@ -80,13 +82,14 @@
     state: directory
     mode: "{{ item.mode }}"
     owner: root
-    group: root
+    group: "{{ item.group | default('root') }}"
   become: true
   become_user: root
   loop:
-    - { path: "/var/log", mode: "0755" }
+    - { path: "/var/log", mode: "0755", group: "syslog" }
     - { path: "/var/tmp", mode: "1777" } # 1777 enforces the sticky bit required for system shared tmp
     - { path: "/var/lib/containers", mode: "0711" } # 0711 lets rootless graph drivers explore nested boundaries
+    - { path: "/var/lib/systemd/coredump", mode: "0755" } # Required for secure systemd-coredump processing
 
 - name: Force systemd-journald to persist logs on the external storage partition
   ansible.builtin.lineinfile:

@@ -16,7 +16,7 @@ storage_mount_path: "/mnt/storage"
 container_user: "container"  # {{ ansible_user }} defaults to your current SSH deployment user
 container_uid: 1001
 container_gid: 1001
-container_user_home: "/home/container"
+container_user_home: "{{ storage_mount_path }}/home/{{ container_user }}"
 container_ssh_key: "{{ vault_container_ssh_key }}" # PUBLIC KEY IS: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIO/T9Cr9TnhGMGGVkf1RIjyN1RzAohLSIJJSGBS7VV+Q
 
 # Simplified container tracking registry
@@ -24,9 +24,9 @@ monitored_containers:
   - name: homeassistant
     repo_url: "git@github.com:rtitz/homeassistant-container.git"
     branch: main
+  - name: wallbox-controller
+    repo_url: "git@github.com:rtitz/wallbox-controller.git"
+    branch: main
 #  - name: solar-monitor
 #    repo_url: "git@github.com:rtitz/solar-monitor.git"
-#    branch: main
-#  - name: wallbox-controller
-#    repo_url: "git@github.com:rtitz/wallbox-controller.git"
 #    branch: main
