@@ -30,8 +30,8 @@ FINAL_FILENAME="${TIMESTAMP}_home.tar.gz"
 
 # Safely change into the backup folder to link relatively
 cd "${BACKUP_DIR}" || exit 1
-/usr/bin/rm -f "latest-home.tar.gz"
-/usr/bin/ln -s "${FINAL_FILENAME}" "latest-home.tar.gz"
+/usr/bin/rm -f "latest_home.tar.gz"
+/usr/bin/ln -s "${FINAL_FILENAME}" "latest_home.tar.gz"
 
 # ==========================================
 # STEP 3: Cleanup Retention
