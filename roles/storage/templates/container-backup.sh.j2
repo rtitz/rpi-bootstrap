@@ -29,7 +29,7 @@ FINAL_FILENAME="${TIMESTAMP}_home.tar.gz"
 /usr/bin/mv "${BACKUP_DIR}/TMP_home.tar.gz" "${BACKUP_DIR}/${FINAL_FILENAME}"
 
 # Safely change into the backup folder to link relatively
-cd "${BACKUP_DIR}"
+cd "${BACKUP_DIR}" || exit 1
 /usr/bin/rm -f "latest-home.tar.gz"
 /usr/bin/ln -s "${FINAL_FILENAME}" "latest-home.tar.gz"
 
