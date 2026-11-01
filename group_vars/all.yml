@@ -24,9 +24,35 @@ monitored_containers:
   - name: homeassistant
     repo_url: "git@github.com:rtitz/homeassistant-container.git"
     branch: main
+    present: true
+    enabled: true
+
   - name: wallbox-controller
     repo_url: "git@github.com:rtitz/wallbox-controller.git"
     branch: main
-#  - name: solar-monitor
-#    repo_url: "git@github.com:rtitz/solar-monitor.git"
-#    branch: main
+    present: true
+    enabled: true
+
+  - name: solar-monitor
+    repo_url: "git@github.com:rtitz/solar-monitor.git"
+    branch: main
+    present: true
+    enabled: true
+
+  - name: wallbox-monitor
+    repo_url: "git@github.com:rtitz/wallbox-monitor.git"
+    branch: main
+    present: true
+    enabled: true
+
+  - name: go-nofity
+    repo_url: "git@github.com:rtitz/go-notify.git"
+    branch: main
+    present: true
+    enabled: true
+
+  - name: go-r53-dyndns
+    repo_url: "git@github.com:rtitz/go-r53-dyndns.git"
+    branch: main
+    present: true
+    enabled: false

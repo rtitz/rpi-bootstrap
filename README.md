@@ -107,7 +107,6 @@ This is the primary method for this repo. It works well when you want to image t
 diskutil list
 sudo diskutil unmountDisk /dev/diskN
 sudo dd if=/path/to/your-image.img of=/dev/rdiskN bs=1m
-sync
 ```
 
 Replace `N` with the target disk number, such as `disk4` or `disk6`.

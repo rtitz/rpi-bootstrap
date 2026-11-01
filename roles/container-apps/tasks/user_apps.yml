@@ -1,5 +1,17 @@
 ---
-- name: Deploy application Systemd services definitions
+# 1. Stop and disable EVERYTHING that shouldn't be running (disabled OR absent)
+- name: Stop and disable inactive or absent container services
+  ansible.builtin.command:
+    cmd: "systemctl --user --machine={{ container_user }}@.host disable --now container-{{ item.name }}.service"
+  become: true
+  become_user: root
+  loop: "{{ monitored_containers }}"
+  when: not (item.enabled | default(true)) or not (item.present | default(true))
+  failed_when: false # Safe fallback if the systemd file was already deleted manually
+  changed_when: true
+
+# 2. Deploy systemd unit files only for containers that are present
+- name: Deploy application Systemd service definitions
   ansible.builtin.template:
     src: container-app.service.j2
     dest: "{{ container_user_home }}/.config/systemd/user/container-{{ item.name }}.service"
@@ -9,12 +21,42 @@
   become: true
   become_user: root
   loop: "{{ monitored_containers }}"
+  when: item.present | default(true)
+  notify: Reload user systemd daemon
 
-- name: Register and enable all container services on boot via the user systemd bus
-  ansible.builtin.command:
-    cmd: "systemctl --user --machine={{ container_user }}@.host enable --now {{ item }}"
+# 3. Clean up systemd unit files on disk for containers marked as absent
+- name: Remove application Systemd service definitions if absent
+  ansible.builtin.file:
+    path: "{{ container_user_home }}/.config/systemd/user/container-{{ item.name }}.service"
+    state: absent
   become: true
   become_user: root
-  loop: "{{ monitored_containers | map(attribute='name') | map('regex_replace', '^(.*)$', 'container-\\1.service') | list }}"
-  changed_when: false # systemctl is self-validating and handles state skipping silently under the hood
+  loop: "{{ monitored_containers }}"
+  when: not (item.present | default(true))
+  notify: Reload user systemd daemon
+
+# 4. Force immediate daemon-reload before executing the startup sequence
+- name: Force immediate daemon-reload
+  ansible.builtin.meta: flush_handlers
+
+# 5. Safely start and enable only the explicitly active services
+- name: Enable and start active container services
+  ansible.builtin.command:
+    cmd: "systemctl --user --machine={{ container_user }}@.host enable --now container-{{ item.name }}.service"
+  become: true
+  become_user: root
+  loop: "{{ monitored_containers }}"
+  when:
+    - item.present | default(true)
+    - item.enabled | default(true)
+  changed_when: true
+
+
+#- name: Register and enable all container services on boot via the user systemd bus
+#  ansible.builtin.command:
+#    cmd: "systemctl --user --machine={{ container_user }}@.host enable --now {{ item }}"
+#  become: true
+#  become_user: root
+#  loop: "{{ monitored_containers | map(attribute='name') | map('regex_replace', '^(.*)$', 'container-\\1.service') | list }}"
+#  changed_when: false # systemctl is self-validating and handles state skipping silently under the hood
 

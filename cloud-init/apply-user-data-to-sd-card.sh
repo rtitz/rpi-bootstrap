@@ -77,10 +77,17 @@ echo "💾 Flushing internal block cache layers to disk media..."
 sync
 
 BOOT_DISK_ID=$(diskutil info "$BOOT_PATH" 2>/dev/null | awk -F': ' '/Device Identifier/ {print $2}')
+
 if [ -n "$BOOT_DISK_ID" ]; then
-    BOOT_DISK_PATH="/dev/${BOOT_DISK_ID%s[0-9]*}"
-    echo "🔌 Safely ejecting the full removable media device: $BOOT_DISK_PATH"
-    diskutil eject "$BOOT_DISK_PATH"
+    # Safely match and extract only the root disk prefix (e.g., disk4 from disk4s1 or disk4s1s1)
+    if [[ "$BOOT_DISK_ID" =~ ^(disk[0-9]+) ]]; then
+        BOOT_DISK_PATH="/dev/${BASH_REMATCH[1]}"
+        echo "🔌 Safely ejecting the full removable media device: $BOOT_DISK_PATH"
+        diskutil eject "$BOOT_DISK_PATH"
+    else
+        echo "⚠️  Device ID format unrecognized ($BOOT_DISK_ID); falling back to direct volume eject."
+        diskutil eject "$BOOT_PATH"
+    fi
 else
     echo "⚠️  Unable to resolve the backing disk; falling back to the mounted boot volume."
     diskutil eject "$BOOT_PATH"

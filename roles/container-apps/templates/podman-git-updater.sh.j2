@@ -11,6 +11,16 @@ REPOS=(
 export XDG_RUNTIME_DIR="/run/user/{{ container_uid }}"
 export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/{{ container_uid }}/bus"
 
+# --- Image Prune Logic (Stored in /tmp) ---
+# Uniquely name the file using the container UID so multiple rootless accounts don't conflict
+TRACK_FILE="/tmp/podman_prune_{{ container_uid }}_timestamp"
+
+# If the tracking file doesn't exist, or is older than 1440 minutes (24 hours), run the prune
+if [ ! -f "$TRACK_FILE" ] || ! find "$TRACK_FILE" -mmin -1440 | grep -q .; then
+    echo "[$(date)] Running scheduled global image prune..."
+    podman image prune -a -f
+    touch "$TRACK_FILE"
+fi
 
 for ENTRY in "${REPOS[@]}"; do
     REPO_DIR="${ENTRY%%:*}"
@@ -18,6 +28,7 @@ for ENTRY in "${REPOS[@]}"; do
     BRANCH="${REST%%:*}"
     APP_NAME="${REST##*:}"
 
+    echo "Update $APP_NAME ..." 
     if [ ! -d "$REPO_DIR" ]; then
         continue
     fi
