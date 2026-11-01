@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Define paths dynamically from Ansible variables
+STORAGE_PATH="{{ storage_mount_path }}"
+KEEP_COUNT="{{ backup_keep_count | default(14) }}"
+TIMESTAMP=$(/usr/bin/date +%Y%m%d-%H%M%S)
+
+BACKUP_DIR="${STORAGE_PATH}/backup"
+
+# Create backup directory if it is missing
+/usr/bin/mkdir -p "${BACKUP_DIR}"
+
+# Run backup to a temporary file first for atomic safety
+/usr/bin/tar --acls --xattrs -czf "${BACKUP_DIR}/TMP_home.tar.gz" -C "${STORAGE_PATH}" home
+
+# Atomically move the completed backup to its final timestamped name
+/usr/bin/mv "${BACKUP_DIR}/TMP_home.tar.gz" "${BACKUP_DIR}/${TIMESTAMP}_home.tar.gz"
+
+# Run cleanup retention safely
+/usr/bin/rm -f "${BACKUP_DIR}/TMP_home.tar.gz"
+/usr/bin/find "${BACKUP_DIR}" -maxdepth 1 -name "*_home.tar.gz" -print0 | xargs -0 ls -1tr 2>/dev/null | /usr/bin/head -n -"${KEEP_COUNT}" | /usr/bin/xargs -r rm

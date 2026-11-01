@@ -1,0 +1,9 @@
+[Unit]
+Description=Daily compressed backup of container home directory
+RequiresMountsFor={{ storage_mount_path }}
+
+[Service]
+Type=oneshot
+CPUWeight=20
+IOWeight=20
+ExecStart=/usr/local/bin/container-backup.sh

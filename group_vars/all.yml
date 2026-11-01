@@ -12,6 +12,11 @@ enable_container: true
 storage_label: "data"
 storage_mount_path: "/mnt/storage"
 
+backup_destination: "{{ storage_mount_path }}/backup"
+backup_schedule: "*-*-* 04:00:00" # Systemd format
+backup_keep_count: 10
+
+
 # Target user configurations for rootless container runtimes (for containers)
 container_user: "container"  # {{ ansible_user }} defaults to your current SSH deployment user
 container_uid: 1001
@@ -25,7 +30,7 @@ monitored_containers:
     repo_url: "git@github.com:rtitz/homeassistant-container.git"
     branch: main
     present: true
-    enabled: true
+    enabled: false
 
   - name: wallbox-controller
     repo_url: "git@github.com:rtitz/wallbox-controller.git"
@@ -37,19 +42,19 @@ monitored_containers:
     repo_url: "git@github.com:rtitz/solar-monitor.git"
     branch: main
     present: true
-    enabled: true
+    enabled: false
 
   - name: wallbox-monitor
     repo_url: "git@github.com:rtitz/wallbox-monitor.git"
     branch: main
     present: true
-    enabled: true
+    enabled: false
 
   - name: go-nofity
     repo_url: "git@github.com:rtitz/go-notify.git"
     branch: main
     present: true
-    enabled: true
+    enabled: false
 
   - name: go-r53-dyndns
     repo_url: "git@github.com:rtitz/go-r53-dyndns.git"

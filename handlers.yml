@@ -38,3 +38,9 @@
   become: true
   become_user: root
   changed_when: true
+
+- name: Restart backup timer
+  ansible.builtin.systemd_service:
+    name: container-backup.timer
+    state: restarted
+    daemon_reload: true

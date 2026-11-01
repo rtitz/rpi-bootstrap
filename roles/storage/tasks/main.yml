@@ -32,3 +32,31 @@
     enabled: no
   failed_when: false
   when: ansible_facts['os_family'] == "Debian" and ('raspberrypi' in ansible_facts['kernel'] or 'rpi' in ansible_facts['kernel'])
+
+# BACKUP
+- name: Deploy the backup execution script
+  ansible.builtin.template:
+    src: container-backup.sh.j2
+    dest: /usr/local/bin/container-backup.sh
+    mode: '0755'
+
+- name: Deploy systemd backup service from template
+  ansible.builtin.template:
+    src: container-backup.service.j2
+    dest: /etc/systemd/system/container-backup.service
+    mode: '0644'
+  notify: Restart backup timer
+
+- name: Deploy systemd backup timer from template
+  ansible.builtin.template:
+    src: container-backup.timer.j2
+    dest: /etc/systemd/system/container-backup.timer
+    mode: '0644'
+  notify: Restart backup timer
+
+- name: Enable and start container backup timer
+  ansible.builtin.systemd_service:
+    name: container-backup.timer
+    state: started
+    enabled: true
+    daemon_reload: true
