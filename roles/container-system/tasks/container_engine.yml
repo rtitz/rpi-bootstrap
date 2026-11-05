@@ -17,16 +17,13 @@
 # ==============================================================================
 # GLOBAL ENGINE RUNTIME CONFIGURATION SAFEGUARDS
 # ==============================================================================
-- name: Inspect presence of the global container storage profile
-  ansible.builtin.stat:
-    path: /etc/containers/storage.conf
-  register: target_storage_conf_check
-
-- name: Generate default storage.conf template if completely missing
+- name: Provision complete authoritative storage configuration template
   ansible.builtin.copy:
     content: |
       [storage]
       driver = "overlay"
+      runroot = "/run/containers/storage"
+      graphroot = "/var/lib/containers/storage"
       
       [storage.options]
       mount_program = "/usr/bin/fuse-overlayfs"
@@ -34,12 +31,6 @@
     owner: root
     group: root
     mode: '0644'
-  when: not target_storage_conf_check.stat.exists
+  become: true
 
-- name: Force default filesystem tracking parameter metrics to OverlayFS if file existed
-  ansible.builtin.lineinfile:
-    path: /etc/containers/storage.conf
-    regexp: '^driver\s*=\s*'
-    line: 'driver = "overlay"'
-  when: target_storage_conf_check.stat.exists
 
