@@ -30,7 +30,7 @@ monitored_containers:
     repo_url: "git@github.com:rtitz/homeassistant-container.git"
     branch: main
     present: true
-    enabled: false
+    enabled: true
 
   - name: wallbox-controller
     repo_url: "git@github.com:rtitz/wallbox-controller.git"
