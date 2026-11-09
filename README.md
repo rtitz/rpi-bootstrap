@@ -209,8 +209,8 @@ The following is an example for a **dedicated, empty disk**. Identify the correc
 lsblk -f
 DISK=/dev/sdX
 PARTITION=/dev/sdX1
-sudo parted "$DISK" --script mklabel gpt mkpart primary ext4 1MiB 100%
-sudo mkfs.ext4 -L data "$PARTITION"
+sudo parted "$DISK" --script mklabel gpt mkpart primary btrfs 1MiB 100%
+sudo mkfs.btrfs -f -M -L data "$PARTITION"
 lsblk -f
 ```
 

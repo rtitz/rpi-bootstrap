@@ -12,10 +12,16 @@ enable_container: true
 storage_label: "data"
 storage_mount_path: "/mnt/storage"
 
-backup_destination: "{{ storage_mount_path }}/backup"
-backup_schedule: "*-*-* 04:00:00" # Systemd format
-backup_keep_count: 10
+# Btrfs maintenance schedules (Systemd format)
+btrfs_balance_schedule: "Sun *-*-* 03:00:00" # Filtered chunk space optimization (Runs weekly on Sundays at 03:00 AM)
+btrfs_scrub_schedule: "*-*-01 01:00:00"     # Cryptographic bit rot check block (Runs monthly on the 1st at 01:00 AM)
 
+# Backup configuration
+backup_schedule: "*-*-* 04:00:00" # Main point-in-time snapshot and sync routine (Runs daily at 04:00 AM)
+backup_destination: "{{ storage_mount_path }}/backup"
+backup_keep_count: 10
+backup_keep_count_btrfs_snapshots: 21
+backup_containers_to_stop_before_backup: "" # Space separated list of systemd service names to stop before backup and restart after backup
 
 # Target user configurations for rootless container runtimes (for containers)
 container_user: "container"  # {{ ansible_user }} defaults to your current SSH deployment user
@@ -54,7 +60,7 @@ monitored_containers:
     repo_url: "git@github.com:rtitz/go-notify.git"
     branch: main
     present: true
-    enabled: false
+    enabled: true
 
   - name: go-r53-dyndns
     repo_url: "git@github.com:rtitz/go-r53-dyndns.git"

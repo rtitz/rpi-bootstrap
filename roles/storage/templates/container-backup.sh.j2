@@ -4,37 +4,87 @@ set -euo pipefail
 # Define paths dynamically from Ansible variables
 STORAGE_PATH="{{ storage_mount_path }}"
 KEEP_COUNT="{{ backup_keep_count | default(14) }}"
+KEEP_COUNT_BTRFS_SNAPSHOTS="{{ backup_keep_count_btrfs_snapshots | default(21) }}"
 TIMESTAMP=$(/usr/bin/date +%Y%m%d-%H%M%S)
 
 BACKUP_DIR="${STORAGE_PATH}/backup"
 MIRROR_DIR="${BACKUP_DIR}/latest_mirror"
 FINAL_FILENAME="${TIMESTAMP}_home.tar.gz"
 
+# BTRFS Snapshot
+CONTAINERS_TO_STOP="{{ backup_containers_to_stop_before_backup | default('') }}"
+CONTAINER_USER="{{ container_user }}"
+CONTAINER_UID="{{ container_uid }}"
+
 # Create backup and mirror directories if they are missing
+echo "Ensuring backup and mirror directories exist..."
 /usr/bin/mkdir -p "${BACKUP_DIR}"
 /usr/bin/mkdir -p "${MIRROR_DIR}"
+echo "Backup and mirror directories are ready."
+echo "Ensuring Btrfs subvolume .snapshots exists..."
+/usr/bin/btrfs subvolume list ${STORAGE_PATH} | grep -q '\.snapshots$' || /usr/bin/btrfs subvolume create ${STORAGE_PATH}/.snapshots
+echo "Btrfs subvolume .snapshots is ready."
+echo
+
+# ==============================================================================
+# BTRFS STORAGE SNAPSHOT EXHAUST LOOP MATRIX (POINT-IN-TIME BACKUP)
+# ==============================================================================
+echo "Starting backup process at $(/usr/bin/date +%Y-%m-%d\ %H:%M:%S)..."
+echo "Starting Btrfs snapshot storage-${TIMESTAMP}..."
+# 1. Cleanly stop designated target containers if defined
+if [ -n "${CONTAINERS_TO_STOP}" ]; then
+    echo "Isolating runtime write heads: Stopping ${CONTAINERS_TO_STOP}..."
+    sudo -u "${CONTAINER_USER}" XDG_RUNTIME_DIR="/run/user/${CONTAINER_UID}" /usr/bin/systemctl --user stop ${CONTAINERS_TO_STOP}
+fi
+
+# 2. Execute the atomic, immutable point-in-time Btrfs snapshot
+echo "Executing atomic Btrfs snapshot tracking loop: storage-${TIMESTAMP}"
+if ! /usr/bin/btrfs subvolume snapshot -r "${STORAGE_PATH}" "${STORAGE_PATH}/.snapshots/storage-${TIMESTAMP}"; then
+    echo "CRITICAL: Btrfs snapshot compilation failed! Aborting stack kickstart." >&2
+    exit 1
+fi
+
+# 3. Restore container runtimes immediately post-snapshot execution
+if [ -n "${CONTAINERS_TO_STOP}" ]; then
+    echo "Restoring application stack services: Starting ${CONTAINERS_TO_STOP}..."
+    sudo -u "${CONTAINER_USER}" XDG_RUNTIME_DIR="/run/user/${CONTAINER_UID}" /usr/bin/systemctl --user start ${CONTAINERS_TO_STOP}
+fi
+echo "Btrfs snapshot storage-${TIMESTAMP} completed successfully."
+
 
 # ==========================================
 # STEP 1: Live Directory Mirror (rsync)
 # ==========================================
-/usr/bin/rsync -aHAX --delete "${STORAGE_PATH}/home/" "${MIRROR_DIR}/"
+echo "Starting live directory mirror to ${MIRROR_DIR}..."
+/usr/bin/rsync -aHAX --delete "${STORAGE_PATH}/.snapshots/storage-${TIMESTAMP}/home/" "${MIRROR_DIR}/"
+echo "Live directory mirror completed successfully."
 
 # ==========================================
 # STEP 2: Compressed Archive (tar.gz)
 # ==========================================
 # Run backup to a temporary file first for atomic safety
-/usr/bin/tar --acls --xattrs -czf "${BACKUP_DIR}/TMP_home.tar.gz" -C "${STORAGE_PATH}" home
+echo "Starting compressed archive backup..."
+/usr/bin/tar --acls --xattrs -czf "${BACKUP_DIR}/TMP_home.tar.gz" -C "${STORAGE_PATH}/.snapshots/storage-${TIMESTAMP}" home
 
 # Atomically move the completed backup to its final timestamped name
 /usr/bin/mv "${BACKUP_DIR}/TMP_home.tar.gz" "${BACKUP_DIR}/${FINAL_FILENAME}"
+echo "Compressed archive backup completed successfully."
 
 # Safely change into the backup folder to link relatively
 cd "${BACKUP_DIR}" || exit 1
 /usr/bin/rm -f "latest_home.tar.gz"
 /usr/bin/ln -s "${FINAL_FILENAME}" "latest_home.tar.gz"
+echo "Created symbolic link: latest_home.tar.gz -> ${FINAL_FILENAME}"
 
 # ==========================================
 # STEP 3: Cleanup Retention
 # ==========================================
+echo "Cleaning up old backups and snapshots..."
 /usr/bin/rm -f "TMP_home.tar.gz"
+echo "Cleaning up compressed archives..."
 /usr/bin/find "." -maxdepth 1 -name "*_home.tar.gz" -print0 | xargs -0 ls -1tr 2>/dev/null | /usr/bin/head -n -"${KEEP_COUNT}" | /usr/bin/xargs -r rm
+echo "Cleaning up Btrfs snapshots..."
+/usr/bin/btrfs subvolume list -o ${STORAGE_PATH}/.snapshots/ | grep '\.snapshots/storage-' | /usr/bin/sort | /usr/bin/head -n -"${KEEP_COUNT_BTRFS_SNAPSHOTS}" | /usr/bin/cut -d ' ' -f 9 | /usr/bin/sed 's#.*\.snapshots/#.snapshots/#' | while read -r subvol; do /usr/bin/btrfs subvolume delete "${STORAGE_PATH}/$subvol"; done
+echo "Backup completed successfully. Retained ${KEEP_COUNT} compressed archives and ${KEEP_COUNT_BTRFS_SNAPSHOTS} Btrfs snapshots."
+echo "Backup process finished at $(/usr/bin/date +%Y-%m-%d\ %H:%M:%S)."
+exit 0

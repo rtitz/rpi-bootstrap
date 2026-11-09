@@ -158,6 +158,8 @@
       - git
       - rsync
       - tree
+      - btrfs-progs
+      - lvm2
     state: present
 
 - name: Deploy global shell aliases profile script

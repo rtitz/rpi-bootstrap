@@ -19,8 +19,8 @@
   ansible.posix.mount:
     path: "{{ storage_mount_path }}"
     src: "LABEL={{ storage_label }}"
-    fstype: ext4
-    opts: defaults,noatime,commit=30,nofail
+    fstype: btrfs # ext4
+    opts: defaults,noatime,commit=30,compress=zstd:1,autodefrag,subvol=@storage,nofail # For ext4: defaults,noatime,commit=30,nofail
     state: mounted
   become: true
   become_user: root
@@ -58,6 +58,93 @@
   when: 
     - ansible_facts['mounts'] | selectattr('mount', 'equalto', '/var/log') | list | length == 0
     - existing_storage_logs.matched == 0
+
+# ==============================================================================
+# AUTOMATED BTRFS PERFORMANCE AND INTEGRITY MAINTENANCE SYSTEM
+# ==============================================================================
+- name: Generate Btrfs maintenance worker engine scripts
+  ansible.builtin.copy:
+    dest: "/usr/local/bin/{{ item.name }}"
+    owner: root
+    group: root
+    mode: '0755'
+    content: "{{ item.content }}"
+  become: true
+  become_user: root
+  loop:
+    - name: btrfs-maintenance-balance.sh
+      content: |
+        #!/bin/bash
+        # Filtered balance: Reclaims data/metadata chunks that are less than 50% utilized
+        echo "Starting filtered space reclamation on {{ storage_mount_path }}..."
+        /usr/bin/btrfs balance start -musage=50 -dusage=50 {{ storage_mount_path }}
+    - name: btrfs-maintenance-scrub.sh
+      content: |
+        #!/bin/bash
+        # Foreground scrub: Validates all SHA256/CRC32 data block checksums
+        echo "Starting data block cryptographic verification on {{ storage_mount_path }}..."
+        /usr/bin/btrfs scrub start -B {{ storage_mount_path }}
+
+- name: Deploy Btrfs maintenance systemd service definitions
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item }}.service"
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      [Unit]
+      Description=Btrfs Maintenance Tool ({{ item }})
+      After={{ storage_mount_path | regex_replace('^/', '') | regex_replace('/', '-') }}.mount
+      Requires={{ storage_mount_path | regex_replace('^/', '') | regex_replace('/', '-') }}.mount
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/{{ item }}.sh
+      IOSchedulingClass=idle
+      CPUSchedulingPolicy=idle
+  become: true
+  become_user: root
+  loop:
+    - btrfs-maintenance-balance
+    - btrfs-maintenance-scrub
+
+- name: Deploy Btrfs maintenance scheduling timers
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item.name }}.timer"
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      [Unit]
+      Description=Trigger Schedule for {{ item.name }}
+      After={{ storage_mount_path | regex_replace('^/', '') | regex_replace('/', '-') }}.mount
+
+      [Timer]
+      OnCalendar={{ item.schedule }} {{ timezone }}
+      Persistent=true
+      Unit={{ item.name }}.service
+
+      [Install]
+      WantedBy=timers.target
+  become: true
+  become_user: root
+  loop:
+    - name: btrfs-maintenance-balance
+      schedule: "{{ btrfs_balance_schedule }}"
+    - name: btrfs-maintenance-scrub
+      schedule: "{{ btrfs_scrub_schedule }}"
+
+- name: Force systemd daemon-reload and active-enable the maintenance grid
+  ansible.builtin.systemd_service:
+    name: "{{ item }}.timer"
+    state: started
+    enabled: true
+    daemon_reload: true
+  become: true
+  become_user: root
+  loop:
+    - btrfs-maintenance-balance
+    - btrfs-maintenance-scrub
 
 # ==============================================================================
 # BIND MOUNT ENFORCEMENT (REQUIRED TO MATCH REPO LAYOUT)
