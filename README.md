@@ -206,11 +206,18 @@ External container/system storage is enabled by default with `enable_container: 
 The following is an example for a **dedicated, empty disk**. Identify the correct device first; replace `/dev/sdX` and `/dev/sdX1` with the actual disk and partition paths for your hardware. The commands that create a partition table and filesystem erase existing data on the selected device:
 
 ```bash
+sudo apt update && sudo apt -y install btrfs-progs
 lsblk -f
 DISK=/dev/sdX
 PARTITION=/dev/sdX1
 sudo parted "$DISK" --script mklabel gpt mkpart primary btrfs 1MiB 100%
 sudo mkfs.btrfs -f -M -L data "$PARTITION"
+sudo mkdir /mnt/tmp
+sudo mount "$PARTITION" /mnt/tmp
+sudo btrfs subvolume create /mnt/tmp/@storage
+sudo btrfs subvolume create /mnt/tmp/@storage/.snapshots
+sudo umount /mnt/tmp
+sudo rm -rf /mnt/tmp
 lsblk -f
 ```
 

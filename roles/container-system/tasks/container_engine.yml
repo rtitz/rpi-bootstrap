@@ -26,7 +26,8 @@
       graphroot = "/var/lib/containers/storage"
       
       [storage.options]
-      mount_program = "/usr/bin/fuse-overlayfs"
+      # Native kernel overlayfs works on Btrfs without fuse-overlayfs on modern kernels
+      mountopt = "nodev,metacopy=on"
     dest: /etc/containers/storage.conf
     owner: root
     group: root
